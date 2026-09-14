@@ -274,6 +274,29 @@ python3 tests/test_model.py     # or: pytest
 
 ### Sleep debt
 
+`DEBT_SOURCE` picks where the adjustment comes from:
+
+| Source | Basis | Tonight, on the account this was built against |
+|---|---|---|
+| `"computed"` (default) | Your own shortfalls against your personal sleep need | debt 7:46 → capped at 60m earlier |
+| `"oura"` | Oura's `sleep_balance` readiness contributor | balance 86/100 → 8m earlier |
+| `"none"` | No adjustment at all | — |
+
+**A caveat on the Oura source.** Oura does not publish a sleep debt duration —
+`sleep_time` returns `optimal_bedtime: null` on most days, and nothing in the v2
+API gives hours owed. `sleep_balance` is a **0-100 score** covering roughly the
+last two weeks, so the mapping to minutes is this app's, not Oura's:
+
+```
+adjustment = (100 - sleep_balance) / 100 × MAX_DEBT_ADJUSTMENT_MINUTES
+```
+
+A balance of 100 asks for nothing; 50 asks for half the configured maximum. It
+is markedly gentler than the computed figure, because it reflects Oura's view of
+balance rather than a literal tally of hours missed.
+
+#### The computed source
+
 For every night inside `DEBT_WINDOW_DAYS`:
 
 ```

@@ -4,9 +4,11 @@ import config
 from config import OURA_TOKEN, ICAL_OUTPUT_PATH
 from config_store import sync_with_template
 
-from oura_api.client import fetch_sleep_data, fetch_daily_sleep
+from oura_api.client import (fetch_sleep_data, fetch_daily_sleep,
+                              fetch_daily_readiness)
 from model.sleep_need import build_profile
-from model.bedtime import sleep_debt_seconds, plan_nights, hhmm
+from model.bedtime import plan_nights, hhmm
+from model import debt as debt_model
 from wake import build_wake_schedule
 from bed import build_bed_schedule
 from ical.generator import (
@@ -54,6 +56,10 @@ def main():
     sessions = fetch_sleep_data(OURA_TOKEN, days_back=history_days)
     daily_sleep = fetch_daily_sleep(OURA_TOKEN, days_back=history_days)
 
+    debt_source = str(setting("DEBT_SOURCE", "computed")).strip().lower()
+    readiness = (fetch_daily_readiness(OURA_TOKEN, days_back=30)
+                 if debt_source == "oura" else [])
+
     if not sessions:
         print("No sleep data found — cannot compute a personal bedtime.")
         return
@@ -73,14 +79,20 @@ def main():
     for note in profile.notes:
         print(f"  ⚠️  {note}")
 
-    debt = sleep_debt_seconds(
+    debt = debt_model.assess(
+        debt_source,
         sessions,
         daily_sleep,
+        readiness,
         profile,
         window_days=setting("DEBT_WINDOW_DAYS", 14),
+        recovery_nights=setting("DEBT_RECOVERY_NIGHTS", 7),
+        max_adjustment_minutes=setting("MAX_DEBT_ADJUSTMENT_MINUTES", 45),
     )
-    print(f"  Sleep debt: {hhmm(debt)} over the last "
-          f"{setting('DEBT_WINDOW_DAYS', 14)} days")
+    for line in debt.reasons:
+        print(f"  {line}")
+    if not debt.reasons:
+        print("  Sleep debt: none")
 
     tz = resolve_timezone(setting("TIMEZONE", None))
     wake_schedule = build_wake_schedule(config, tz)
@@ -94,10 +106,8 @@ def main():
         wake_schedule,
         profile,
         days_ahead=days_ahead,
-        debt_seconds=debt,
+        debt=debt,
         bed_schedule=bed_schedule,
-        debt_recovery_nights=setting("DEBT_RECOVERY_NIGHTS", 7),
-        max_debt_adjustment_minutes=setting("MAX_DEBT_ADJUSTMENT_MINUTES", 45),
         earliest_bedtime=setting("EARLIEST_BEDTIME", None),
         latest_bedtime=setting("LATEST_BEDTIME", None),
     )

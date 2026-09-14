@@ -127,6 +127,10 @@ SETTINGS: List[Field] = [
     Field("FALLBACK_SLEEP_NEED_HOURS", "Fallback sleep need (hours)", "float",
           section="Sleep need", default=8.0, minimum=1.0, maximum=14.0),
 
+    Field("DEBT_SOURCE", "Sleep debt source", "choice", section="Sleep debt",
+          choices=["computed", "oura", "none"], default="computed",
+          help="'computed' sums your own shortfalls. 'oura' uses Oura's "
+               "sleep_balance score. 'none' disables the adjustment."),
     Field("DEBT_WINDOW_DAYS", "Debt window (days)", "int", section="Sleep debt",
           default=14, minimum=1, maximum=90),
     Field("DEBT_RECOVERY_NIGHTS", "Recovery nights", "int", section="Sleep debt",

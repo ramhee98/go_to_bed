@@ -115,7 +115,17 @@ FALLBACK_SLEEP_NEED_HOURS = 8.0
 
 # --- Sleep debt -------------------------------------------------------------
 
-# Rolling window (in days) used to accumulate sleep debt.
+# Where the sleep debt adjustment comes from.
+#   "computed" - sum your own shortfalls against your personal sleep need
+#                over DEBT_WINDOW_DAYS. A real duration, in hours owed.
+#   "oura"     - use Oura's sleep_balance readiness contributor, its own
+#                assessment of the last two weeks. NOTE: Oura publishes this
+#                as a 0-100 score, not hours, so the mapping to minutes of
+#                earlier bedtime is this app's, not Oura's.
+#   "none"     - no debt adjustment at all.
+DEBT_SOURCE = "computed"
+
+# Rolling window (in days) used to accumulate sleep debt. ("computed" only)
 DEBT_WINDOW_DAYS = 14
 
 # Debt is paid back gradually, spread across this many nights, rather than all

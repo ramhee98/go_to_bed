@@ -43,9 +43,10 @@ col2.metric(
     delta_color="off",
 )
 col3.metric("Time in bed", hhmm(tonight.actual_time_in_bed_seconds))
+debt = state["debt"]
 col4.metric(
-    "Sleep debt",
-    hhmm(state["debt"]),
+    "Sleep debt" if debt.source != "oura" else "Oura sleep balance",
+    debt.display,
     delta=(f"-{hhmm(tonight.debt_adjustment_seconds)} bedtime"
            if tonight.debt_adjustment_seconds > 0 else "none"),
     delta_color="off",

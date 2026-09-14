@@ -60,12 +60,25 @@ window = setting("DEBT_WINDOW_DAYS", 14)
 short_nights = int((view["Delta"] < 0).sum())
 
 col1, col2, col3 = st.columns(3)
-col1.metric("Sleep debt", hhmm(state["debt"]),
-            delta=f"fixed: last {window} days", delta_color="off")
+assessment = state["debt"]
+col1.metric(
+    "Sleep debt" if assessment.source != "oura" else "Oura sleep balance",
+    assessment.display,
+    delta=(f"fixed: last {window} days" if assessment.source == "computed"
+           else assessment.source),
+    delta_color="off",
+)
 col2.metric("Short nights", f"{short_nights} of {len(view)}",
             delta=choice.lower(), delta_color="off")
 col3.metric("Median night", hhmm(view["Slept"].median() * 3600),
             delta=choice.lower(), delta_color="off")
+
+if assessment.source != "computed":
+    st.info(
+        f"DEBT_SOURCE is **{assessment.source}**, so the charts below describe "
+        f"your history but do not drive tonight's bedtime. "
+        + " ".join(assessment.reasons)
+    )
 
 st.subheader("Nightly shortfall and surplus")
 st.caption(

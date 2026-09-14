@@ -129,6 +129,7 @@ def plan_night(
     earliest_bedtime: Optional[str] = None,
     latest_bedtime: Optional[str] = None,
     fixed_bedtime: Optional[datetime] = None,
+    debt=None,
 ) -> BedtimePlan:
     """Work out a bedtime for a given wake time.
 
@@ -174,21 +175,28 @@ def plan_night(
             reasons=reasons,
         )
 
-    adjustment = 0.0
-    if debt_seconds > 0 and debt_recovery_nights > 0:
-        adjustment = debt_seconds / debt_recovery_nights
-        cap = max_debt_adjustment_minutes * 60
-        if adjustment > cap:
-            adjustment = cap
-            reasons.append(
-                f"Sleep debt {hhmm(debt_seconds)} → capped at "
-                f"{max_debt_adjustment_minutes}m earlier."
-            )
-        else:
-            reasons.append(
-                f"Sleep debt {hhmm(debt_seconds)} spread over "
-                f"{debt_recovery_nights} nights → {hhmm(adjustment)} earlier."
-            )
+    # A DebtAssessment carries an adjustment already worked out by whichever
+    # source produced it; `debt_seconds` remains the direct route for callers
+    # that only have a duration.
+    if debt is not None:
+        adjustment = debt.adjustment_seconds
+        reasons.extend(debt.reasons)
+    else:
+        adjustment = 0.0
+        if debt_seconds > 0 and debt_recovery_nights > 0:
+            adjustment = debt_seconds / debt_recovery_nights
+            cap = max_debt_adjustment_minutes * 60
+            if adjustment > cap:
+                adjustment = cap
+                reasons.append(
+                    f"Sleep debt {hhmm(debt_seconds)} → capped at "
+                    f"{max_debt_adjustment_minutes}m earlier."
+                )
+            else:
+                reasons.append(
+                    f"Sleep debt {hhmm(debt_seconds)} spread over "
+                    f"{debt_recovery_nights} nights → {hhmm(adjustment)} earlier."
+                )
 
     target_tib = base_tib + adjustment
 
@@ -221,6 +229,7 @@ def plan_nights(
     debt_seconds: float = 0.0,
     start_day: Optional[date] = None,
     bed_schedule=None,
+    debt=None,
     **kwargs,
 ) -> List[BedtimePlan]:
     """Plan the next `days_ahead` nights using any wake-time source.
@@ -242,6 +251,6 @@ def plan_nights(
             continue
         fixed = bed_schedule.bedtime_for(wake_time) if bed_schedule else None
         plans.append(plan_night(wake_time, profile, debt_seconds,
-                                fixed_bedtime=fixed, **kwargs))
+                                fixed_bedtime=fixed, debt=debt, **kwargs))
 
     return plans

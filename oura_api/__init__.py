@@ -1,3 +1,3 @@
-from .client import fetch_sleep_data, fetch_daily_sleep
+from .client import fetch_sleep_data, fetch_daily_sleep, fetch_daily_readiness
 
-__all__ = ["fetch_sleep_data", "fetch_daily_sleep"]
+__all__ = ["fetch_sleep_data", "fetch_daily_sleep", "fetch_daily_readiness"]

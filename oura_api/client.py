@@ -71,3 +71,8 @@ def fetch_sleep_data(token: str, days_back: int = 90) -> list:
 def fetch_daily_sleep(token: str, days_back: int = 90) -> list:
     """Fetch the per-day sleep score used to decide which nights were good."""
     return _fetch(token, "daily_sleep", days_back)
+
+
+def fetch_daily_readiness(token: str, days_back: int = 30) -> list:
+    """Fetch daily readiness, which carries Oura's own sleep_balance score."""
+    return _fetch(token, "daily_readiness", days_back)

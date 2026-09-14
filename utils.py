@@ -12,9 +12,11 @@ import streamlit as st
 import config
 from config_store import sync_with_template
 from ical.generator import resolve_timezone
-from model.bedtime import hhmm, plan_nights, sleep_debt_seconds
+from model.bedtime import hhmm, plan_nights
+from model import debt as debt_model
 from model.sleep_need import build_profile, collect_nights
-from oura_api.client import fetch_daily_sleep, fetch_sleep_data
+from oura_api.client import (fetch_daily_readiness, fetch_daily_sleep,
+                             fetch_sleep_data)
 from wake import build_wake_schedule
 from bed import build_bed_schedule
 
@@ -102,7 +104,8 @@ def load_oura(history_days: int):
     token = setting("OURA_TOKEN", "")
     sessions = fetch_sleep_data(token, days_back=history_days)
     daily = fetch_daily_sleep(token, days_back=history_days)
-    return sessions, daily
+    readiness = fetch_daily_readiness(token, days_back=30)
+    return sessions, daily, readiness
 
 
 def sync_config() -> list:
@@ -130,7 +133,7 @@ def load_state(history_days=None):
     """
     sync_config()
     history_days = history_days or setting("HISTORY_DAYS", 90)
-    sessions, daily = load_oura(history_days)
+    sessions, daily, readiness = load_oura(history_days)
 
     if not sessions:
         return None
@@ -143,9 +146,12 @@ def load_state(history_days=None):
         fallback_sleep_need_hours=setting("FALLBACK_SLEEP_NEED_HOURS", 8.0),
     )
 
-    debt = sleep_debt_seconds(
-        sessions, daily, profile,
+    debt = debt_model.assess(
+        setting("DEBT_SOURCE", "computed"),
+        sessions, daily, readiness, profile,
         window_days=setting("DEBT_WINDOW_DAYS", 14),
+        recovery_nights=setting("DEBT_RECOVERY_NIGHTS", 7),
+        max_adjustment_minutes=setting("MAX_DEBT_ADJUSTMENT_MINUTES", 45),
     )
 
     tz = resolve_timezone(setting("TIMEZONE", None))
@@ -156,10 +162,8 @@ def load_state(history_days=None):
         wake_schedule,
         profile,
         days_ahead=setting("DAYS_AHEAD", 14),
-        debt_seconds=debt,
+        debt=debt,
         bed_schedule=bed_schedule,
-        debt_recovery_nights=setting("DEBT_RECOVERY_NIGHTS", 7),
-        max_debt_adjustment_minutes=setting("MAX_DEBT_ADJUSTMENT_MINUTES", 45),
         earliest_bedtime=setting("EARLIEST_BEDTIME", None),
         latest_bedtime=setting("LATEST_BEDTIME", None),
     )
@@ -167,6 +171,7 @@ def load_state(history_days=None):
     return {
         "sessions": sessions,
         "daily": daily,
+        "readiness": readiness,
         "nights": collect_nights(sessions, daily),
         "profile": profile,
         "debt": debt,
