@@ -95,7 +95,7 @@ st.altair_chart(style_axes(bars + midnight + labels, tokens),
 
 st.dataframe(
     df[["Day", "Bed", "Wake", "In bed", "Source"]],
-    use_container_width=True,
+    width="stretch",
     hide_index=True,
 )
 

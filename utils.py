@@ -60,6 +60,12 @@ def theme() -> dict:
     return PALETTE.get(str(base).lower(), PALETTE["light"])
 
 
+# NOTE: st.altair_chart still takes use_container_width and has no width
+# parameter as of streamlit 1.50, unlike button/dataframe. Its deprecation
+# warning has no migration target yet; switch those calls to width="stretch"
+# once a release adds it.
+
+
 def style_axes(chart, tokens: dict):
     """Apply recessive grid and axis chrome to an Altair chart."""
     return (
@@ -161,7 +167,7 @@ def sidebar(state):
     """The controls shared by every page."""
     with st.sidebar:
         st.markdown("### go_to_bed")
-        if st.button("🔄 Refresh data", use_container_width=True):
+        if st.button("🔄 Refresh data", width="stretch"):
             load_oura.clear()
             st.rerun()
 

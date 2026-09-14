@@ -117,6 +117,6 @@ with st.expander("Table view"):
     st.dataframe(
         df[["Night", "Slept", "Score", "Efficiency", "Quality"]]
         .sort_values("Night", ascending=False),
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
     )

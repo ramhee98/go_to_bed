@@ -1,5 +1,7 @@
 requests
 icalendar
-streamlit
+# 1.50 replaced use_container_width with width= on button and dataframe.
+# Older releases have no width parameter, so the UI needs at least this.
+streamlit>=1.50
 pandas
 altair

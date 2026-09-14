@@ -157,6 +157,6 @@ with st.expander("Table view"):
         table[["Night", "Slept label", "Delta label", "Score"]]
         .rename(columns={"Slept label": "Time asleep", "Delta label": "vs need"})
         .iloc[::-1],
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
     )
