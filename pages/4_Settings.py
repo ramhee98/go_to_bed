@@ -63,6 +63,12 @@ def widget(field, value):
         return st.text_input(label, value=(value or ""), placeholder="blank = use Monday–Friday",
                              help=help_text, key=key)
 
+    if field.kind == "lines":
+        text = "\n".join(value) if isinstance(value, (list, tuple)) else (value or "")
+        return st.text_area(label, value=text, height=110,
+                            placeholder="https://example.com/calendar.ics",
+                            help=help_text, key=key)
+
     if field.kind == "minutes":
         if value is None:
             shown = ""

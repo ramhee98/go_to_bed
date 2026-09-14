@@ -58,6 +58,28 @@ SETTINGS: List[Field] = [
     Field("WAKE_TIME_THURSDAY", "Thursday override", "opt_time", section="Wake times"),
     Field("WAKE_TIME_FRIDAY", "Friday override", "opt_time", section="Wake times"),
 
+    Field("WAKE_SOURCE", "Wake time source", "choice", section="Calendar feeds",
+          choices=["fixed", "calendar"], default="fixed",
+          help="'fixed' uses the configured wake times. 'calendar' reads the "
+               "feeds below and can pull the alarm earlier."),
+    Field("CALENDAR_URLS", "Calendar feeds", "lines", section="Calendar feeds",
+          help="One .ics URL or local path per line.", default=[]),
+    Field("CALENDAR_LEAD_MINUTES", "Lead time (minutes)", "int",
+          section="Calendar feeds",
+          help="Getting ready plus travel before the first event.",
+          default=90, minimum=0, maximum=600),
+    Field("CALENDAR_ONLY_EARLIER", "Only ever wake earlier", "bool",
+          section="Calendar feeds",
+          help="On: a late first event keeps your usual wake time.", default=True),
+    Field("CALENDAR_EARLIEST_WAKE", "Earliest calendar wake", "time",
+          section="Calendar feeds",
+          help="The calendar may never derive a wake time before this.",
+          default="05:00"),
+    Field("CALENDAR_SKIP_ALL_DAY", "Ignore all-day events", "bool",
+          section="Calendar feeds", default=True),
+    Field("CALENDAR_SKIP_FREE", "Ignore free and cancelled events", "bool",
+          section="Calendar feeds", default=True),
+
     Field("BED_SOURCE", "Bedtime source", "choice", section="Bedtimes",
           choices=["computed", "fixed"], default="computed",
           help="'computed' back-calculates from your wake time and sleep need. "
@@ -179,6 +201,13 @@ def coerce(field: Field, raw) -> Any:
         text = str(raw or "").strip()
         return text or None
 
+    if field.kind == "lines":
+        if isinstance(raw, (list, tuple)):
+            items = [str(item).strip() for item in raw]
+        else:
+            items = [line.strip() for line in str(raw or "").splitlines()]
+        return [item for item in items if item]
+
     if field.kind == "time":
         return parse_hhmm(raw, label)
 
@@ -234,6 +263,13 @@ def serialize(value) -> str:
         if not all(isinstance(item, int) for item in value):
             raise ValidationError("Only whole numbers are allowed in a list setting.")
         return "(" + ", ".join(str(item) for item in value) + ")"
+    if isinstance(value, list):
+        if not all(isinstance(item, str) for item in value):
+            raise ValidationError("Only text entries are allowed in a list setting.")
+        if not value:
+            return "[]"
+        inner = ",\n".join(f"    {serialize(item)}" for item in value)
+        return "[\n" + inner + ",\n]"
     raise ValidationError(f"Cannot write a {type(value).__name__} to config.py.")
 
 
@@ -244,6 +280,55 @@ def read_values(cfg) -> dict:
         for f in SETTINGS
         if f.key not in SECRET_KEYS
     }
+
+
+def _bracket_delta(line: str) -> int:
+    """Net bracket depth a line adds, ignoring strings and comments.
+
+    Brackets inside a quoted URL or a commented-out example must not count, or
+    a multi-line list would be measured wrongly.
+    """
+    depth = 0
+    quote = None
+    position = 0
+
+    while position < len(line):
+        character = line[position]
+        if quote:
+            if character == "\\":
+                position += 2
+                continue
+            if character == quote:
+                quote = None
+        elif character in "\"'":
+            quote = character
+        elif character == "#":
+            break
+        elif character in "([{":
+            depth += 1
+        elif character in ")]}":
+            depth -= 1
+        position += 1
+
+    return depth
+
+
+def _assignment_end(lines: List[str], start: int) -> int:
+    """Index just past the assignment that begins at `lines[start]`.
+
+    A single-line setting returns start + 1; a list spread over several lines
+    returns the index after its closing bracket.
+    """
+    depth = 0
+    index = start
+
+    while index < len(lines):
+        depth += _bracket_delta(lines[index])
+        index += 1
+        if depth <= 0:
+            break
+
+    return index
 
 
 def write_values(path: str, updates: dict) -> List[str]:
@@ -263,29 +348,41 @@ def write_values(path: str, updates: dict) -> List[str]:
     changed = []
     remaining = dict(updates)
 
-    for index, line in enumerate(lines):
-        match = re.match(r"^([A-Z_][A-Z0-9_]*)\s*=", line)
+    index = 0
+    while index < len(lines):
+        match = re.match(r"^([A-Z_][A-Z0-9_]*)\s*=", lines[index])
         if not match:
+            index += 1
             continue
+
         key = match.group(1)
+        end = _assignment_end(lines, index)
+
         if key not in remaining:
+            index = end
             continue
+
         new_value = remaining.pop(key)
 
         # Compare the parsed value, not the rendered text: otherwise a
         # difference in quote style or spacing counts as a change and the
         # save rewrites lines the user never touched.
-        existing_text = line.split("=", 1)[1].strip()
+        existing_text = "".join(lines[index:end]).split("=", 1)[1].strip()
         try:
             unchanged = ast.literal_eval(existing_text) == new_value
         except (ValueError, SyntaxError):
             unchanged = False
 
         if unchanged:
+            index = end
             continue
 
-        lines[index] = f"{key} = {serialize(new_value)}\n"
+        # The whole assignment is replaced, not just its first line — a list
+        # written across several lines would otherwise leave its tail behind
+        # and turn config.py into a syntax error.
+        lines[index:end] = [f"{key} = {serialize(new_value)}\n"]
         changed.append(key)
+        index += 1
 
     # A setting the file never had (an older config.py) is appended rather than
     # silently dropped, so the UI can introduce new options.

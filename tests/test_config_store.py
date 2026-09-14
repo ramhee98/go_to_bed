@@ -22,6 +22,11 @@ from config_store import (
 SAMPLE = '''# A comment that must survive
 OURA_TOKEN = "SECRET-TOKEN-VALUE"
 
+CALENDAR_URLS = [
+    # "https://example.com/commented-out.ics",
+]
+TRAILING_SETTING = 1
+
 # Wake times
 WAKE_TIME_WEEKDAY = "06:20"
 WAKE_TIME_MONDAY = None
@@ -55,6 +60,50 @@ def test_write_preserves_comments_and_the_token():
         os.remove(path)
         if os.path.exists(path + ".bak"):
             os.remove(path + ".bak")
+
+
+def test_multiline_list_is_replaced_whole():
+    # A list spread over several lines must be replaced in full. Rewriting
+    # only its first line would leave the tail behind and produce a file that
+    # no longer parses.
+    import ast as ast_module
+    path = _sample("cfg_multiline.py")
+    try:
+        write_values(path, {"CALENDAR_URLS": ["https://a.example/x.ics",
+                                              "https://b.example/y.ics"]})
+        written = open(path).read()
+        ast_module.parse(written)                     # must still be valid Python
+        assert "TRAILING_SETTING = 1" in written      # nothing after it was eaten
+        assert "commented-out" not in written         # old body fully replaced
+    finally:
+        for suffix in ("", ".bak"):
+            if os.path.exists(path + suffix):
+                os.remove(path + suffix)
+
+
+def test_multiline_list_round_trips_and_can_shrink():
+    import importlib.util
+    path = _sample("cfg_shrink.py")
+    try:
+        write_values(path, {"CALENDAR_URLS": ["https://a.example/x.ics"]})
+        write_values(path, {"CALENDAR_URLS": []})
+        spec = importlib.util.spec_from_file_location("cfg_shrink", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        assert module.CALENDAR_URLS == []
+        assert module.TRAILING_SETTING == 1
+    finally:
+        for suffix in ("", ".bak"):
+            if os.path.exists(path + suffix):
+                os.remove(path + suffix)
+
+
+def test_brackets_in_strings_and_comments_do_not_confuse_the_scanner():
+    from config_store import _bracket_delta
+    assert _bracket_delta('X = "a ] b"\n') == 0
+    assert _bracket_delta("X = 1  # ] ) }\n") == 0
+    assert _bracket_delta("X = [\n") == 1
+    assert _bracket_delta("]\n") == -1
 
 
 def test_write_refuses_the_token():

@@ -5,3 +5,5 @@ icalendar
 streamlit>=1.50
 pandas
 altair
+# Recurrence expansion for calendar-driven wake times.
+python-dateutil

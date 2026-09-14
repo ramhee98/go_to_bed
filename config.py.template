@@ -27,6 +27,32 @@ WAKE_TIME_WEDNESDAY = None
 WAKE_TIME_THURSDAY = None
 WAKE_TIME_FRIDAY = None
 
+# --- Calendar-driven wake times ---------------------------------------------
+# Only used when WAKE_SOURCE = "calendar".
+
+# One or more .ics feeds to read. HTTPS URLs or local file paths both work.
+CALENDAR_URLS = [
+    # "https://example.com/your-calendar.ics",
+]
+
+# Minutes between waking and your first event: getting ready plus travel.
+CALENDAR_LEAD_MINUTES = 90
+
+# Only ever move the alarm EARLIER. With this on, a day whose first event is
+# late keeps your configured wake time — a 14:00 meeting is no reason to sleep
+# until 13:00. Turn it off to follow the calendar in both directions.
+CALENDAR_ONLY_EARLIER = True
+
+# Never derive a wake time before this, whatever the calendar says. Guards
+# against a stray overnight entry demanding a 03:00 start.
+CALENDAR_EARLIEST_WAKE = "05:00"
+
+# Ignore all-day events: a birthday or a holiday doesn't start your morning.
+CALENDAR_SKIP_ALL_DAY = True
+
+# Ignore events marked free or cancelled rather than busy.
+CALENDAR_SKIP_FREE = True
+
 # --- Bedtimes ---------------------------------------------------------------
 
 # Where bedtimes come from.

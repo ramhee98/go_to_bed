@@ -20,15 +20,38 @@ from daily_schedule import DAY_NAMES, collect_overrides
 
 from .fixed import FixedWakeSchedule
 
-# Maps the WAKE_SOURCE config value to a builder taking (config_module, tz).
-SOURCES = {
-    "fixed": lambda cfg, tz: FixedWakeSchedule(
+def _fixed(cfg, tz) -> FixedWakeSchedule:
+    return FixedWakeSchedule(
         weekday=getattr(cfg, "WAKE_TIME_WEEKDAY", "06:30"),
         saturday=getattr(cfg, "WAKE_TIME_SATURDAY", "08:00"),
         sunday=getattr(cfg, "WAKE_TIME_SUNDAY", "08:00"),
         per_day=collect_overrides(cfg, "WAKE_TIME"),
         tz=tz,
-    ),
+    )
+
+
+def _calendar(cfg, tz) -> WakeSchedule:
+    # The fixed schedule is the baseline the calendar can only pull earlier
+    # from, so a day with no events — or a late first event — still has an
+    # answer.
+    from .calendar import CalendarWakeSchedule
+
+    return CalendarWakeSchedule(
+        sources=getattr(cfg, "CALENDAR_URLS", []),
+        fallback=_fixed(cfg, tz),
+        lead_minutes=getattr(cfg, "CALENDAR_LEAD_MINUTES", 90),
+        only_earlier=getattr(cfg, "CALENDAR_ONLY_EARLIER", True),
+        earliest_wake=getattr(cfg, "CALENDAR_EARLIEST_WAKE", "05:00"),
+        skip_all_day=getattr(cfg, "CALENDAR_SKIP_ALL_DAY", True),
+        skip_free=getattr(cfg, "CALENDAR_SKIP_FREE", True),
+        tz=tz,
+    )
+
+
+# Maps the WAKE_SOURCE config value to a builder taking (config_module, tz).
+SOURCES = {
+    "fixed": _fixed,
+    "calendar": _calendar,
 }
 
 

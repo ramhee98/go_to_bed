@@ -36,8 +36,10 @@ derives the recommendation from the nights you actually slept well instead.
   nights ahead, and how each past night landed
 - ⚙️ **Settings page** — edit every setting from the browser and write it back to
   `config.py`, comments intact. The Oura token is never shown or written there
-- 🔌 **Pluggable wake times** — `WAKE_SOURCE` selects where wake times come from;
-  a calendar-driven source drops in without touching the model
+- 📆 **Calendar-aware** — point it at one or more `.ics` feeds and an early
+  first commitment pulls your alarm, and with it that night's bedtime, earlier.
+  A *late* first event never makes you sleep in
+- 🔌 **Pluggable wake times** — `WAKE_SOURCE` selects where wake times come from
 - Degrades gracefully: API errors print a message and return empty rather than
   raising, and a thin history falls back to a configured default
 
@@ -90,6 +92,51 @@ Each lead time becomes its own `VALARM`, worded so stacked reminders aren't
 identical — "Bedtime in 1 hour", then "Bedtime in 15 min". Values are
 de-duplicated and ordered furthest-out first; anything unreadable is dropped
 with a warning rather than stopping the run.
+
+### Calendar-driven wake times
+
+Set `WAKE_SOURCE = "calendar"` to read your actual commitments:
+
+```python
+WAKE_SOURCE = "calendar"
+
+CALENDAR_URLS = [
+    "https://example.com/work.ics",
+    "https://example.com/lectures.ics",
+    "/var/www/html/personal.ics",      # local paths work too
+]
+
+CALENDAR_LEAD_MINUTES  = 90        # getting ready + travel
+CALENDAR_ONLY_EARLIER  = True      # a late meeting is no reason to sleep in
+CALENDAR_EARLIEST_WAKE = "05:00"   # floor, whatever the calendar says
+CALENDAR_SKIP_ALL_DAY  = True
+CALENDAR_SKIP_FREE     = True
+```
+
+Each day, the earliest qualifying event sets `wake = first event − lead time`.
+That flows through the sleep model, so an 08:15 lecture doesn't just move your
+alarm — it moves the previous night's bedtime too.
+
+**It only ever moves the alarm earlier.** With `CALENDAR_ONLY_EARLIER` on, a day
+whose first event is at 14:00 keeps your configured wake time; only a morning
+starting earlier than usual pulls it forward. Turn it off to follow the calendar
+in both directions.
+
+What it deliberately ignores:
+
+| Skipped | Why |
+|---|---|
+| All-day events | A birthday or holiday doesn't start your morning |
+| `TRANSP:TRANSPARENT` | Marked free, so not a commitment |
+| `STATUS:CANCELLED` | It isn't happening |
+| Anything before `CALENDAR_EARLIEST_WAKE` | A stray 03:00 entry shouldn't demand a 01:30 start |
+
+Recurring events are expanded (`RRULE`), including `EXDATE` cancellations, so a
+weekly lecture sets the alarm every week rather than only on its first date.
+
+Feeds are read once per run. A feed that is unreachable, malformed or empty logs
+a warning and that day falls back to your configured wake time — a calendar
+being down never stops the run.
 
 ### Bedtimes
 
@@ -264,20 +311,20 @@ writer refuses it outright. Values are validated and re-serialised as typed
 literals rather than pasted as text, so nothing typed into a form can execute
 when `config.py` is next imported.
 
-## Adding calendar-driven wake times
+## Adding another wake-time source
 
-`WAKE_SOURCE` exists so the wake time can come from somewhere other than a fixed
-clock — deriving it from your first appointment, for example. To add that:
+`WAKE_SOURCE` picks where wake times come from — `"fixed"` and `"calendar"` ship
+with the app. To add another (a shift roster, a travel itinerary):
 
-1. Write `wake/calendar.py` with a `CalendarWakeSchedule(WakeSchedule)` that
-   reads your `.ics` URLs, finds the first commitment of each day and subtracts
-   travel and morning routine. Return `None` for days with nothing scheduled, or
-   delegate to `FixedWakeSchedule` to fall back to the configured time.
+1. Write a `WakeSchedule` subclass with `wake_time_for(day)` and `describe(day)`.
+   Return `None` for days it has no opinion about, or delegate to
+   `FixedWakeSchedule` to fall back to the configured time.
 2. Register it in `SOURCES` in `wake/__init__.py`.
 3. Add its settings to `config.py.template`.
 
 Nothing else changes — `main.py`, the model and the Streamlit pages all talk to
-the `WakeSchedule` interface, not to any particular source.
+the `WakeSchedule` interface, not to any particular source. `wake/calendar.py`
+is the worked example.
 
 ## Example calendar output
 
