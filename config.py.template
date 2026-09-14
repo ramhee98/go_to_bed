@@ -116,16 +116,39 @@ FALLBACK_SLEEP_NEED_HOURS = 8.0
 # --- Sleep debt -------------------------------------------------------------
 
 # Where the sleep debt adjustment comes from.
-#   "computed" - sum your own shortfalls against your personal sleep need
-#                over DEBT_WINDOW_DAYS. A real duration, in hours owed.
-#   "oura"     - use Oura's sleep_balance readiness contributor, its own
-#                assessment of the last two weeks. NOTE: Oura publishes this
-#                as a 0-100 score, not hours, so the mapping to minutes of
-#                earlier bedtime is this app's, not Oura's.
-#   "none"     - no debt adjustment at all.
+#   "oura"          - Oura's own formula: L = need - slept per night, summed
+#                     as sum(L_n * 0.93^n) over 14 days with n=0 today, the
+#                     total floored at zero and rounded to 10 minutes. Recent
+#                     nights dominate, and a long night genuinely offsets an
+#                     earlier short one. Nights with no data are skipped.
+#   "computed"      - sum only the shortfalls, undecayed, over
+#                     DEBT_WINDOW_DAYS. Stricter: surpluses never offset, so
+#                     this reads considerably higher than Oura's figure.
+#   "oura_balance"  - scale the adjustment by Oura's sleep_balance readiness
+#                     contributor. That is a 0-100 score, not hours, so the
+#                     mapping to minutes is this app's, not Oura's.
+#   "none"          - no debt adjustment at all.
 DEBT_SOURCE = "computed"
 
-# Rolling window (in days) used to accumulate sleep debt. ("computed" only)
+# The sleep need the "oura" formula measures against, in hours. Oura does not
+# publish the baseline its own app uses, and the result is very sensitive to
+# it: the 14-day weights sum to about 9.1, so every minute of baseline error
+# moves the debt by roughly nine minutes.
+#
+# Leave as None to use your computed sleep need. To match the figure in the
+# Oura app, read today's debt there and run:
+#
+#     python3 main.py --calibrate-debt 10
+#
+# then paste the baseline it prints in here.
+OURA_BASELINE_NEED_HOURS = None
+
+# Count naps towards each day's sleep total in the "oura" formula. Nights-only
+# has fitted the Oura app better in testing, so this defaults off; turn it on
+# if your own calibration says otherwise.
+OURA_DEBT_INCLUDE_NAPS = False
+
+# Rolling window (in days) used to accumulate sleep debt.
 DEBT_WINDOW_DAYS = 14
 
 # Debt is paid back gradually, spread across this many nights, rather than all

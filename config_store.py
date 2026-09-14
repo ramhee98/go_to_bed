@@ -128,9 +128,17 @@ SETTINGS: List[Field] = [
           section="Sleep need", default=8.0, minimum=1.0, maximum=14.0),
 
     Field("DEBT_SOURCE", "Sleep debt source", "choice", section="Sleep debt",
-          choices=["computed", "oura", "none"], default="computed",
-          help="'computed' sums your own shortfalls. 'oura' uses Oura's "
-               "sleep_balance score. 'none' disables the adjustment."),
+          choices=["computed", "oura", "oura_balance", "none"], default="computed",
+          help="'oura' uses Oura's own decay-weighted formula. 'computed' "
+               "sums only shortfalls and reads higher. 'oura_balance' scales "
+               "by the readiness score. 'none' disables the adjustment."),
+    Field("OURA_BASELINE_NEED_HOURS", "Oura sleep need (hours)", "opt_text",
+          section="Sleep debt",
+          help="The sleep need Oura measures against, e.g. 7.21. Blank uses "
+               "your computed need. Run 'python3 main.py --calibrate-debt "
+               "10,20,30' with figures from the Oura app to find it."),
+    Field("OURA_DEBT_INCLUDE_NAPS", "Count naps in the Oura formula", "bool",
+          section="Sleep debt", default=False),
     Field("DEBT_WINDOW_DAYS", "Debt window (days)", "int", section="Sleep debt",
           default=14, minimum=1, maximum=90),
     Field("DEBT_RECOVERY_NIGHTS", "Recovery nights", "int", section="Sleep debt",

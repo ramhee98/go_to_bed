@@ -295,6 +295,39 @@ A balance of 100 asks for nothing; 50 asks for half the configured maximum. It
 is markedly gentler than the computed figure, because it reflects Oura's view of
 balance rather than a literal tally of hours missed.
 
+#### Matching Oura's own sleep need
+
+The `"oura"` source measures against a baseline sleep need, and Oura publishes
+neither its debt figure nor the need behind it. The result is extremely
+sensitive to that baseline — the 14-day weights sum to about 9.1, so **every
+minute of baseline error moves the debt by roughly nine minutes.**
+
+Read today's debt off the Oura app and invert the formula for it:
+
+```bash
+python3 main.py --calibrate-debt 10          # today's figure
+python3 main.py --calibrate-debt 10,20,30    # today, yesterday, the day before
+```
+
+```
+  Baseline that reproduces it: 7:12 (7.210 hours, naps excluded)
+  Fit against each observation:
+    2026-09-14  model   0m   app  10m   off -10
+    2026-09-13  model  30m   app  20m   off +10
+    2026-09-12  model  20m   app  30m   off -10
+```
+
+Put the result in `OURA_BASELINE_NEED_HOURS`. `OURA_DEBT_INCLUDE_NAPS` controls
+whether naps count toward each day's total; nights-only has fitted better in
+testing, so it defaults off.
+
+An exact match on every day should not be expected. Testing against three
+consecutive observed values found **no constant baseline that reproduces all
+three**, across both nap settings, both rounding modes, windows of 10/14/21 days
+and day-shifts either side — the best possible is one day off by one rounding
+step. Each day on its own solves to a baseline of 7:11-7:13, which suggests the
+formula is right and Oura's own baseline simply moves day to day.
+
 The Oura app shows a sleep debt in minutes, but **no v2 endpoint exposes that
 number** — it is computed in the app. So when `DEBT_SOURCE = "oura"` the
 shortfall tally is still computed here and shown beside the score, giving you a

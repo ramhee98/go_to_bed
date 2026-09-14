@@ -14,14 +14,21 @@ of earlier bedtime is this app's interpretation, not a figure from Oura.
 """
 
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Dict, List, Optional
 
 from .bedtime import hhmm, sleep_debt_seconds
-from .sleep_need import SleepProfile
+from .sleep_need import SleepProfile, collect_nights
 
 # Oura reports sleep_balance on a 1-100 scale where 100 means "in balance".
 BALANCE_BEST = 100
+
+# Oura's own sleep debt weights each night by 0.93^n, n=0 being today, so a
+# short night three weeks ago barely registers while last night dominates.
+OURA_DECAY = 0.93
+OURA_WINDOW_DAYS = 14
+OURA_ROUNDING_MINUTES = 10
 
 
 @dataclass
@@ -29,7 +36,7 @@ class DebtAssessment:
     """How much earlier to go to bed, and why."""
 
     adjustment_seconds: float
-    source: str                          # "computed" | "oura" | "none"
+    source: str      # "computed" | "oura" | "oura_balance" | "none"
     debt_seconds: Optional[float] = None  # a real duration, when there is one
     balance: Optional[int] = None         # Oura's score, when that's the source
     reasons: List[str] = field(default_factory=list)
@@ -47,6 +54,10 @@ class DebtAssessment:
     def caption(self) -> str:
         """The sub-label under the tile, naming the source and its effect."""
         if self.source == "oura":
+            score = (f" · balance {self.balance}/100"
+                     if self.balance is not None else "")
+            return f"Oura formula → -{hhmm(self.adjustment_seconds)}{score}"
+        if self.source == "oura_balance":
             score = f"balance {self.balance}/100" if self.balance is not None \
                 else "no balance score"
             return f"Oura {score} → -{hhmm(self.adjustment_seconds)}"
@@ -85,6 +96,146 @@ def computed_assessment(
                           debt_seconds=debt, reasons=reasons)
 
 
+def _slept_by_day(sessions: List[Dict], daily_sleep: List[Dict],
+                  include_naps: bool) -> Dict[date, float]:
+    """Total sleep per day in seconds.
+
+    Oura's daily sleep total counts naps, so including them fits its debt
+    figure better than nights alone.
+    """
+    totals: Dict[date, float] = {}
+
+    if include_naps:
+        for session in sessions or []:
+            duration = session.get("total_sleep_duration")
+            if not duration:
+                continue
+            try:
+                day = date.fromisoformat(str(session.get("day")))
+            except (ValueError, TypeError):
+                continue
+            totals[day] = totals.get(day, 0.0) + float(duration)
+        return totals
+
+    for night in collect_nights(sessions, daily_sleep):
+        try:
+            totals[date.fromisoformat(night["day"])] = night["total_sleep_seconds"]
+        except (ValueError, TypeError):
+            continue
+    return totals
+
+
+def oura_debt_seconds(
+    sessions: List[Dict],
+    daily_sleep: List[Dict],
+    profile: SleepProfile,
+    window_days: int = OURA_WINDOW_DAYS,
+    today: Optional[date] = None,
+    baseline_seconds: Optional[float] = None,
+    include_naps: bool = False,
+) -> float:
+    """Oura's 14-day rolling sleep debt.
+
+        L = baseline_need - actual_sleep          (per night, signed)
+        D = sum(L_n * 0.93^n) for n = 0..13       (n=0 is today)
+        D = max(D, 0), rounded to the nearest 10 minutes
+
+    Two things differ from `sleep_debt_seconds`, and both matter:
+
+    * **L is signed and only the total is clamped.** A night longer than your
+      need genuinely offsets an earlier short one, where the computed source
+      discards every surplus. This makes Oura's figure the more forgiving of
+      the two.
+    * **Recent nights dominate.** The 0.93 decay means last night counts fully
+      while a night thirteen days ago counts about 39%.
+
+    Nights with no data are skipped rather than counted as zero sleep, so a
+    gap in wear doesn't manufacture debt.
+
+    **The baseline dominates the result.** The weights sum to about 9.1 over
+    fourteen days, so every minute of baseline error moves the debt by roughly
+    nine minutes. Oura does not publish the sleep need its own app uses, so to
+    match that display you must supply it — see `calibrate_baseline`.
+    """
+    today = today or date.today()
+    baseline = (baseline_seconds if baseline_seconds is not None
+                else profile.sleep_need_seconds)
+    slept = _slept_by_day(sessions, daily_sleep, include_naps)
+
+    total_seconds = 0.0
+    for offset in range(max(0, window_days)):
+        day = today - timedelta(days=offset)
+        actual = slept.get(day)
+        if actual is None:
+            # No data for this night: skipped, not treated as zero sleep.
+            continue
+        loss = baseline - actual
+        total_seconds += loss * (OURA_DECAY ** offset)
+
+    if total_seconds < 0:
+        total_seconds = 0.0
+
+    # Half-up, not Python's banker's rounding: round(2.5) gives 2, which would
+    # send a debt of exactly 25 minutes down to 20 instead of up to 30.
+    step = OURA_ROUNDING_MINUTES * 60
+    rounded = Decimal(total_seconds / step).quantize(Decimal("1"),
+                                                     rounding=ROUND_HALF_UP)
+    return int(rounded) * step
+
+
+def calibrate_baseline(
+    sessions: List[Dict],
+    daily_sleep: List[Dict],
+    observed_minutes,
+    window_days: int = OURA_WINDOW_DAYS,
+    today: Optional[date] = None,
+    include_naps: bool = False,
+) -> Optional[float]:
+    """Solve for the baseline need that reproduces a debt figure you can see.
+
+    Oura shows a sleep debt in its app but publishes neither that number nor
+    the sleep need behind it. Given one observed value, this inverts the
+    formula to recover the baseline, which can then be pinned in config so the
+    app's figure and this one agree.
+
+    `observed_minutes` may be a single figure for today, or a sequence where
+    position is days ago — ``[10, 20, 30]`` meaning today, yesterday and the
+    day before. Several observations are averaged, which matters because the
+    answer is so sensitive that a single day pins the baseline poorly.
+
+    Returns seconds, or None when nothing can be solved — an observed zero, for
+    instance, is satisfied by any sufficiently low baseline and so pins nothing.
+    """
+    today = today or date.today()
+    slept = _slept_by_day(sessions, daily_sleep, include_naps)
+
+    if not isinstance(observed_minutes, (list, tuple)):
+        observed_minutes = [observed_minutes]
+
+    estimates = []
+    for days_ago, observed in enumerate(observed_minutes):
+        if observed is None or observed <= 0:
+            continue
+        anchor = today - timedelta(days=days_ago)
+
+        weight_sum = 0.0
+        weighted_sleep = 0.0
+        for offset in range(max(0, window_days)):
+            actual = slept.get(anchor - timedelta(days=offset))
+            if actual is None:
+                continue
+            weight = OURA_DECAY ** offset
+            weight_sum += weight
+            weighted_sleep += actual * weight
+
+        if weight_sum <= 0:
+            continue
+        # D = baseline * sum(w) - sum(sleep * w)  ->  solve for baseline.
+        estimates.append((observed * 60 + weighted_sleep) / weight_sum)
+
+    return sum(estimates) / len(estimates) if estimates else None
+
+
 def latest_sleep_balance(readiness: List[Dict]) -> Optional[int]:
     """The most recent sleep_balance contributor, or None if absent."""
     best_day, balance = None, None
@@ -120,7 +271,7 @@ def oura_assessment(
 
     if balance is None:
         return DebtAssessment(
-            adjustment_seconds=0.0, source="oura", balance=None,
+            adjustment_seconds=0.0, source="oura_balance", balance=None,
             debt_seconds=debt_seconds,
             reasons=["⚠️ Oura returned no sleep_balance score; "
                      "no debt adjustment applied."],
@@ -144,9 +295,61 @@ def oura_assessment(
         reasons.append(f"Shortfall over the same period: {hhmm(debt_seconds)} "
                        f"(computed here — Oura publishes no duration).")
 
-    return DebtAssessment(adjustment_seconds=adjustment, source="oura",
+    return DebtAssessment(adjustment_seconds=adjustment, source="oura_balance",
                           balance=balance, debt_seconds=debt_seconds,
                           reasons=reasons)
+
+
+def oura_debt_assessment(
+    sessions: List[Dict],
+    daily_sleep: List[Dict],
+    readiness: List[Dict],
+    profile: SleepProfile,
+    window_days: int = OURA_WINDOW_DAYS,
+    recovery_nights: int = 7,
+    max_adjustment_minutes: int = 45,
+    today: Optional[date] = None,
+    baseline_seconds: Optional[float] = None,
+    include_naps: bool = False,
+) -> DebtAssessment:
+    """Debt by Oura's own formula, repaid on this app's schedule.
+
+    The debt is a real duration, so it is spread and capped the same way the
+    computed source is. Oura's balance score is carried alongside for context
+    but does not drive the adjustment here.
+    """
+    debt = oura_debt_seconds(sessions, daily_sleep, profile,
+                             window_days=window_days, today=today,
+                             baseline_seconds=baseline_seconds,
+                             include_naps=include_naps)
+    balance = latest_sleep_balance(readiness)
+    reasons = []
+    adjustment = 0.0
+
+    if debt > 0 and recovery_nights > 0:
+        adjustment = debt / recovery_nights
+        cap = max_adjustment_minutes * 60
+        if adjustment > cap:
+            adjustment = cap
+            reasons.append(f"Oura sleep debt {hhmm(debt)} → capped at "
+                           f"{max_adjustment_minutes}m earlier.")
+        else:
+            reasons.append(f"Oura sleep debt {hhmm(debt)} spread over "
+                           f"{recovery_nights} nights → {hhmm(adjustment)} earlier.")
+    else:
+        reasons.append(f"Oura sleep debt {hhmm(debt)} — no adjustment needed.")
+
+    used = baseline_seconds if baseline_seconds is not None else profile.sleep_need_seconds
+    reasons.append(f"Decay-weighted over {window_days} days against a "
+                   f"{hhmm(used)} baseline"
+                   + (" (from OURA_BASELINE_NEED_HOURS)" if baseline_seconds
+                      is not None else " (your computed sleep need)")
+                   + ("; naps included." if include_naps else "; nights only."))
+    if balance is not None:
+        reasons.append(f"Oura sleep balance: {balance}/100.")
+
+    return DebtAssessment(adjustment_seconds=adjustment, source="oura",
+                          debt_seconds=debt, balance=balance, reasons=reasons)
 
 
 def assess(
@@ -159,6 +362,8 @@ def assess(
     recovery_nights: int = 7,
     max_adjustment_minutes: int = 45,
     today: Optional[date] = None,
+    baseline_seconds: Optional[float] = None,
+    include_naps: bool = False,
 ) -> DebtAssessment:
     """Assess sleep debt using the configured source.
 
@@ -173,6 +378,15 @@ def assess(
                               reasons=["Sleep debt adjustment disabled."])
 
     if name == "oura":
+        return oura_debt_assessment(sessions, daily_sleep, readiness, profile,
+                                    window_days=window_days,
+                                    recovery_nights=recovery_nights,
+                                    max_adjustment_minutes=max_adjustment_minutes,
+                                    today=today,
+                                    baseline_seconds=baseline_seconds,
+                                    include_naps=include_naps)
+
+    if name == "oura_balance":
         # The duration is local arithmetic, so it costs nothing to work out and
         # gives the UI a minutes value to show beside Oura's score.
         tally = sleep_debt_seconds(sessions, daily_sleep, profile,
@@ -181,8 +395,8 @@ def assess(
                                debt_seconds=tally)
 
     if name != "computed":
-        print(f"⚠️  Unknown DEBT_SOURCE '{name}' (known: computed, oura, none); "
-              f"using 'computed'.")
+        print(f"⚠️  Unknown DEBT_SOURCE '{name}' (known: computed, oura, "
+              f"oura_balance, none); using 'computed'.")
 
     return computed_assessment(sessions, daily_sleep, profile, window_days,
                                recovery_nights, max_adjustment_minutes, today)
