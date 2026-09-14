@@ -16,7 +16,21 @@ the WakeSchedule interface.
 from typing import Optional
 
 from .base import WakeSchedule
-from .fixed import FixedWakeSchedule
+from .fixed import DAY_NAMES, FixedWakeSchedule
+
+def _per_day_overrides(cfg) -> dict:
+    """Collect WAKE_TIME_MONDAY … WAKE_TIME_SUNDAY, skipping unset days.
+
+    Saturday and Sunday are read here too, so a per-day entry and the
+    dedicated WAKE_TIME_SATURDAY / WAKE_TIME_SUNDAY settings are the same
+    thing rather than two competing sources of truth.
+    """
+    return {
+        index: getattr(cfg, f"WAKE_TIME_{name.upper()}", None)
+        for index, name in enumerate(DAY_NAMES)
+        if getattr(cfg, f"WAKE_TIME_{name.upper()}", None)
+    }
+
 
 # Maps the WAKE_SOURCE config value to a builder taking (config_module, tz).
 SOURCES = {
@@ -24,6 +38,7 @@ SOURCES = {
         weekday=getattr(cfg, "WAKE_TIME_WEEKDAY", "06:30"),
         saturday=getattr(cfg, "WAKE_TIME_SATURDAY", "08:00"),
         sunday=getattr(cfg, "WAKE_TIME_SUNDAY", "08:00"),
+        per_day=_per_day_overrides(cfg),
         tz=tz,
     ),
 }

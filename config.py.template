@@ -18,6 +18,15 @@ WAKE_TIME_WEEKDAY = "06:30"
 WAKE_TIME_SATURDAY = "08:00"
 WAKE_TIME_SUNDAY = "08:00"
 
+# Optional per-day overrides for the days that don't fit the pattern — a late
+# Wednesday lecture, an early Friday shift. Leave a day as None and it uses
+# WAKE_TIME_WEEKDAY above. Saturday and Sunday are set by the two lines above.
+WAKE_TIME_MONDAY = None
+WAKE_TIME_TUESDAY = None
+WAKE_TIME_WEDNESDAY = None
+WAKE_TIME_THURSDAY = None
+WAKE_TIME_FRIDAY = None
+
 # --- Personal sleep need ----------------------------------------------------
 
 # How many days of Oura history to learn your personal sleep need from.

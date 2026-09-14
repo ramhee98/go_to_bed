@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from model.bedtime import plan_night, sleep_debt_seconds, hhmm
 from model.sleep_need import build_profile, normalize_efficiency, SleepProfile
+from wake import build_wake_schedule
 from wake.fixed import FixedWakeSchedule
 
 TZ = ZoneInfo("Europe/Zurich")
@@ -142,6 +143,49 @@ def test_weekend_wake_times_are_separate():
     assert saturday.time() == time(8, 0)
     assert sunday.time() == time(9, 15)
     assert "Saturday" in schedule.describe(date(2026, 9, 19))
+
+
+def test_per_day_override_beats_the_weekday_default():
+    schedule = FixedWakeSchedule("06:30", "08:00", "08:00",
+                                 per_day={2: "09:45"}, tz=TZ)
+    assert schedule.wake_time_for(date(2026, 9, 16)).time() == time(9, 45)   # Wed
+    assert schedule.wake_time_for(date(2026, 9, 17)).time() == time(6, 30)   # Thu
+    assert "Wednesday" in schedule.describe(date(2026, 9, 16))
+
+
+def test_unset_days_fall_through_to_the_weekday_default():
+    schedule = FixedWakeSchedule("06:30", "08:00", "08:00",
+                                 per_day={0: None, 1: ""}, tz=TZ)
+    assert schedule.wake_time_for(date(2026, 9, 14)).time() == time(6, 30)
+    assert schedule.wake_time_for(date(2026, 9, 15)).time() == time(6, 30)
+
+
+def test_weekend_keeps_its_own_label_not_per_day():
+    # Saturday and Sunday arrive through the same dict, but they have
+    # dedicated settings, so the description must not call them "per-day".
+    schedule = FixedWakeSchedule("06:30", "08:00", "09:00",
+                                 per_day={5: "08:00", 6: "09:00"}, tz=TZ)
+    assert schedule.describe(date(2026, 9, 19)) == "Fixed Saturday wake time (08:00)."
+    assert schedule.describe(date(2026, 9, 20)) == "Fixed Sunday wake time (09:00)."
+
+
+def test_config_without_per_day_keys_still_works():
+    # An existing config.py predating per-day overrides must keep working.
+    class OldConfig:
+        WAKE_SOURCE = "fixed"
+        WAKE_TIME_WEEKDAY = "06:20"
+        WAKE_TIME_SATURDAY = "08:00"
+        WAKE_TIME_SUNDAY = "08:00"
+
+    schedule = build_wake_schedule(OldConfig, TZ)
+    assert schedule.wake_time_for(date(2026, 9, 14)).time() == time(6, 20)
+    assert schedule.wake_time_for(date(2026, 9, 19)).time() == time(8, 0)
+
+
+def test_malformed_override_falls_through_instead_of_crashing():
+    schedule = FixedWakeSchedule("06:30", "08:00", "08:00",
+                                 per_day={2: "25:99"}, tz=TZ)
+    assert schedule.wake_time_for(date(2026, 9, 16)).time() == time(6, 30)
 
 
 def test_bad_wake_time_falls_back_without_crashing():

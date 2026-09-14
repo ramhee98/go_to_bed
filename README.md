@@ -14,8 +14,9 @@ derives the recommendation from the nights you actually slept well instead.
 
 - 🛏️ **Personal sleep need** — the median time you actually slept on nights that
   scored well, not a generic eight hours
-- ⏰ **Three wake times** — Monday–Friday, Saturday and Sunday configured
-  separately, so a late Sunday start never drags your weekday bedtime with it
+- ⏰ **Wake times per day** — Monday–Friday, Saturday and Sunday configured
+  separately so a late Sunday start never drags your weekday bedtime with it,
+  plus an optional override for any individual weekday
 - 📉 **Sleep debt** — shortfalls over a rolling window pull your bedtime earlier,
   spread across several nights and capped, so recovery never demands one brutal
   early night
@@ -63,7 +64,25 @@ derives the recommendation from the nights you actually slept well instead.
    cp config.py.template config.py
    ```
 
-3. Edit `config.py`: set `OURA_TOKEN` and your three wake times.
+3. Edit `config.py`: set `OURA_TOKEN` and your wake times.
+
+### Wake times
+
+Wake times resolve in three layers, most specific first:
+
+```python
+WAKE_TIME_WEEKDAY  = "06:30"   # any Mon-Fri not overridden below
+WAKE_TIME_SATURDAY = "08:00"
+WAKE_TIME_SUNDAY   = "08:00"
+
+WAKE_TIME_WEDNESDAY = "09:45"  # optional per-day override
+WAKE_TIME_FRIDAY    = "05:30"
+WAKE_TIME_MONDAY    = None     # None -> uses WAKE_TIME_WEEKDAY
+```
+
+A per-day override wins over the weekday default; Saturday and Sunday are set by
+their own lines. A day left as `None`, or a time that can't be parsed, falls
+through to the layer below with a warning rather than stopping the run.
 
 ## Usage
 
