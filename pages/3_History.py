@@ -61,13 +61,10 @@ short_nights = int((view["Delta"] < 0).sum())
 
 col1, col2, col3 = st.columns(3)
 assessment = state["debt"]
-col1.metric(
-    "Sleep debt" if assessment.source != "oura" else "Oura sleep balance",
-    assessment.display,
-    delta=(f"fixed: last {window} days" if assessment.source == "computed"
-           else assessment.source),
-    delta_color="off",
-)
+col1.metric("Sleep debt", assessment.display,
+            delta=(f"fixed: last {window} days" if assessment.source == "computed"
+                   else assessment.caption),
+            delta_color="off")
 col2.metric("Short nights", f"{short_nights} of {len(view)}",
             delta=choice.lower(), delta_color="off")
 col3.metric("Median night", hhmm(view["Slept"].median() * 3600),
@@ -75,8 +72,8 @@ col3.metric("Median night", hhmm(view["Slept"].median() * 3600),
 
 if assessment.source != "computed":
     st.info(
-        f"DEBT_SOURCE is **{assessment.source}**, so the charts below describe "
-        f"your history but do not drive tonight's bedtime. "
+        f"`DEBT_SOURCE` is **{assessment.source}**, so the shortfall shown here "
+        f"is computed for reference but does not drive tonight's bedtime. "
         + " ".join(assessment.reasons)
     )
 

@@ -295,6 +295,16 @@ A balance of 100 asks for nothing; 50 asks for half the configured maximum. It
 is markedly gentler than the computed figure, because it reflects Oura's view of
 balance rather than a literal tally of hours missed.
 
+The Oura app shows a sleep debt in minutes, but **no v2 endpoint exposes that
+number** — it is computed in the app. So when `DEBT_SOURCE = "oura"` the
+shortfall tally is still computed here and shown beside the score, giving you a
+duration to read even though the adjustment comes from the balance:
+
+```
+Sleep debt  7:46
+Oura balance 86/100 → -0:08
+```
+
 #### The computed source
 
 For every night inside `DEBT_WINDOW_DAYS`:

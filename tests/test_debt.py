@@ -86,6 +86,29 @@ def test_oura_reports_a_score_not_a_duration():
     assert result.display == "86/100"
 
 
+def test_oura_source_also_reports_a_duration():
+    # Oura gives no hours, so the shortfall is computed alongside and shown
+    # for reference. It must not change the adjustment, which comes from the
+    # score.
+    sessions = [_night("2026-09-10", 6.0), _night("2026-09-11", 6.0)]
+    daily = [{"day": n["day"], "score": 85} for n in sessions]
+    result = assess("oura", sessions, daily, [_readiness("2026-09-14", 50)],
+                    _profile(8.0), window_days=14, max_adjustment_minutes=60,
+                    today=date(2026, 9, 14))
+    assert result.balance == 50
+    assert result.debt_seconds == 4 * 3600          # the computed tally
+    assert result.adjustment_seconds == 30 * 60     # still from the score
+    assert result.display == "4:00"                 # minutes are visible
+    assert "balance 50/100" in result.caption
+    assert any("Oura publishes no duration" in r for r in result.reasons)
+
+
+def test_captions_name_the_source():
+    assert "disabled" in assess("none", [], [], [], _profile()).caption
+    computed = computed_assessment([], [], _profile(), today=date(2026, 9, 14))
+    assert "bedtime" in computed.caption
+
+
 def test_oura_without_a_balance_degrades_to_no_adjustment():
     for readiness in ([], [{"day": "2026-09-14", "contributors": {}}],
                       [{"day": "2026-09-14"}]):

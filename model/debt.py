@@ -36,12 +36,23 @@ class DebtAssessment:
 
     @property
     def display(self) -> str:
-        """A short value for a metric tile."""
+        """A short value for a metric tile — a duration wherever there is one."""
         if self.debt_seconds is not None:
             return hhmm(self.debt_seconds)
         if self.balance is not None:
             return f"{self.balance}/100"
         return "0:00"
+
+    @property
+    def caption(self) -> str:
+        """The sub-label under the tile, naming the source and its effect."""
+        if self.source == "oura":
+            score = f"balance {self.balance}/100" if self.balance is not None \
+                else "no balance score"
+            return f"Oura {score} → -{hhmm(self.adjustment_seconds)}"
+        if self.source == "none":
+            return "adjustment disabled"
+        return f"-{hhmm(self.adjustment_seconds)} bedtime"
 
 
 def computed_assessment(
@@ -96,6 +107,7 @@ def latest_sleep_balance(readiness: List[Dict]) -> Optional[int]:
 def oura_assessment(
     readiness: List[Dict],
     max_adjustment_minutes: int = 45,
+    debt_seconds: Optional[float] = None,
 ) -> DebtAssessment:
     """Debt from Oura's sleep_balance readiness contributor.
 
@@ -109,6 +121,7 @@ def oura_assessment(
     if balance is None:
         return DebtAssessment(
             adjustment_seconds=0.0, source="oura", balance=None,
+            debt_seconds=debt_seconds,
             reasons=["⚠️ Oura returned no sleep_balance score; "
                      "no debt adjustment applied."],
         )
@@ -124,8 +137,16 @@ def oura_assessment(
                    f"earlier ({int(shortfall * 100)}% of the "
                    f"{max_adjustment_minutes}m maximum)."]
 
+    # Oura gives no duration, so the shortfall tally is computed alongside and
+    # shown for reference. It is this app's figure, not Oura's, and it does not
+    # drive the adjustment when this source is selected.
+    if debt_seconds is not None:
+        reasons.append(f"Shortfall over the same period: {hhmm(debt_seconds)} "
+                       f"(computed here — Oura publishes no duration).")
+
     return DebtAssessment(adjustment_seconds=adjustment, source="oura",
-                          balance=balance, reasons=reasons)
+                          balance=balance, debt_seconds=debt_seconds,
+                          reasons=reasons)
 
 
 def assess(
@@ -152,7 +173,12 @@ def assess(
                               reasons=["Sleep debt adjustment disabled."])
 
     if name == "oura":
-        return oura_assessment(readiness, max_adjustment_minutes)
+        # The duration is local arithmetic, so it costs nothing to work out and
+        # gives the UI a minutes value to show beside Oura's score.
+        tally = sleep_debt_seconds(sessions, daily_sleep, profile,
+                                   window_days=window_days, today=today)
+        return oura_assessment(readiness, max_adjustment_minutes,
+                               debt_seconds=tally)
 
     if name != "computed":
         print(f"⚠️  Unknown DEBT_SOURCE '{name}' (known: computed, oura, none); "
