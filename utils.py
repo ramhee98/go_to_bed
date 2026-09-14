@@ -146,12 +146,17 @@ def load_state(history_days=None):
         fallback_sleep_need_hours=setting("FALLBACK_SLEEP_NEED_HOURS", 8.0),
     )
 
+    # Every argument main.py passes must be passed here too, or the app and
+    # the calendar it writes would show different numbers.
+    baseline_hours = setting("OURA_BASELINE_NEED_HOURS", None)
     debt = debt_model.assess(
-        setting("DEBT_SOURCE", "computed"),
+        setting("DEBT_SOURCE", "oura"),
         sessions, daily, readiness, profile,
         window_days=setting("DEBT_WINDOW_DAYS", 14),
         recovery_nights=setting("DEBT_RECOVERY_NIGHTS", 7),
         max_adjustment_minutes=setting("MAX_DEBT_ADJUSTMENT_MINUTES", 45),
+        baseline_seconds=float(baseline_hours) * 3600 if baseline_hours else None,
+        include_naps=setting("OURA_DEBT_INCLUDE_NAPS", False),
     )
 
     tz = resolve_timezone(setting("TIMEZONE", None))

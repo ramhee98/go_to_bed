@@ -339,6 +339,15 @@ def oura_debt_assessment(
     else:
         reasons.append(f"Oura sleep debt {hhmm(debt)} — no adjustment needed.")
 
+    if baseline_seconds is None:
+        # Without a calibrated baseline this measures against the app's own
+        # derived need, which is not the number Oura uses and is amplified
+        # about ninefold by the decay weights.
+        print("⚠️  DEBT_SOURCE is 'oura' but OURA_BASELINE_NEED_HOURS is unset, "
+              "so the debt is measured against this app's derived sleep need "
+              "and will not match the Oura app. Run "
+              "'python3 main.py --calibrate-debt <minutes>' to find it.")
+
     used = baseline_seconds if baseline_seconds is not None else profile.sleep_need_seconds
     reasons.append(f"Decay-weighted over {window_days} days against a "
                    f"{hhmm(used)} baseline"

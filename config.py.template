@@ -128,7 +128,7 @@ FALLBACK_SLEEP_NEED_HOURS = 8.0
 #                     contributor. That is a 0-100 score, not hours, so the
 #                     mapping to minutes is this app's, not Oura's.
 #   "none"          - no debt adjustment at all.
-DEBT_SOURCE = "computed"
+DEBT_SOURCE = "oura"
 
 # The sleep need the "oura" formula measures against, in hours. Oura does not
 # publish the baseline its own app uses, and the result is very sensitive to

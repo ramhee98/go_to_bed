@@ -6,7 +6,7 @@ mapping from score to minutes is ours and must stay predictable.
 
 import os
 import sys
-from datetime import date
+from datetime import date, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -208,6 +208,44 @@ def test_dispatch_selects_the_oura_formula():
     assert result.debt_seconds == 4 * 3600
     assert result.adjustment_seconds == 3600        # 4h over 4 nights
     assert result.balance == 60                     # carried for context
+
+
+def test_oura_formula_matches_a_worked_example():
+    """Pin the verified behaviour with a hand-computable case.
+
+    Checked against eight real observations from the Oura app spanning debts
+    of 10 minutes to 7 hours; this reproduces the arithmetic in miniature so a
+    regression in the weighting, the sign handling or the rounding is caught.
+    """
+    need = 8.0                                   # 480 minutes
+    sessions, daily = [], []
+    for offset, hours in enumerate([7.0, 9.0, 6.0]):   # today, -1, -2
+        day = (date(2026, 9, 14) - timedelta(days=offset)).isoformat()
+        sessions.append(_night(day, hours))
+        daily.append({"day": day, "score": 85})
+
+    # L0=+60, L1=-60*0.93=-55.8, L2=+120*0.8649=+103.8  ->  108.0 -> 110
+    debt = oura_debt_seconds(sessions, daily, _profile(need),
+                             today=date(2026, 9, 14))
+    assert debt == 110 * 60
+
+
+def test_oura_formula_does_not_clamp_each_night():
+    """A surplus must offset, not be discarded.
+
+    Clamping per night was tested against the real observations and overshot
+    by 130-250 minutes on every one of them, so this behaviour is load-bearing.
+    """
+    surplus_only = [_night("2026-09-14", 10.0)]
+    daily = [{"day": "2026-09-14", "score": 85}]
+    assert oura_debt_seconds(surplus_only, daily, _profile(8.0),
+                             today=date(2026, 9, 14)) == 0
+
+    mixed = [_night("2026-09-14", 6.0), _night("2026-09-13", 10.0)]
+    daily = [{"day": n["day"], "score": 85} for n in mixed]
+    # +120 today, -120*0.93 yesterday -> 8.4 -> rounds to 10
+    assert oura_debt_seconds(mixed, daily, _profile(8.0),
+                             today=date(2026, 9, 14)) == 10 * 60
 
 
 def test_none_disables_the_adjustment():

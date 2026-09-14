@@ -128,7 +128,7 @@ SETTINGS: List[Field] = [
           section="Sleep need", default=8.0, minimum=1.0, maximum=14.0),
 
     Field("DEBT_SOURCE", "Sleep debt source", "choice", section="Sleep debt",
-          choices=["computed", "oura", "oura_balance", "none"], default="computed",
+          choices=["oura", "computed", "oura_balance", "none"], default="oura",
           help="'oura' uses Oura's own decay-weighted formula. 'computed' "
                "sums only shortfalls and reads higher. 'oura_balance' scales "
                "by the readiness score. 'none' disables the adjustment."),

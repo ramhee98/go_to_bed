@@ -278,9 +278,38 @@ python3 tests/test_model.py     # or: pytest
 
 | Source | Basis | Tonight, on the account this was built against |
 |---|---|---|
-| `"computed"` (default) | Your own shortfalls against your personal sleep need | debt 7:46 → capped at 60m earlier |
-| `"oura"` | Oura's `sleep_balance` readiness contributor | balance 86/100 → 8m earlier |
+| `"oura"` (default) | Oura's own decay-weighted formula | debt 0:10 → 1m earlier |
+| `"computed"` | Only your shortfalls, undecayed | debt 7:46 → capped at 60m earlier |
+| `"oura_balance"` | Oura's `sleep_balance` readiness contributor | balance 86/100 → 8m earlier |
 | `"none"` | No adjustment at all | — |
+
+#### The Oura formula
+
+```
+L_n = sleep_need - time_slept        (for the night n days ago, signed)
+D   = L_0 + L_1(0.93) + L_2(0.93)² + … + L_13(0.93)¹³
+D   = max(D, 0), rounded to the nearest 10 minutes
+```
+
+Nights with no data are skipped rather than counted as zero sleep.
+
+**Surpluses offset deficits.** `L` is signed and only the total is clamped, so
+a long night genuinely repays an earlier short one. This was checked against
+eight figures read from the Oura app, spanning debts from 10 minutes to 7 hours:
+clamping each night at zero instead overshot by 130-250 minutes on every single
+one. It is the behaviour that makes the formula work.
+
+Validated against those eight observations with `OURA_BASELINE_NEED_HOURS =
+7.217`: **total error 70 minutes across all eight**, four of them exact, most of
+the rest within one rounding step.
+
+| Day | Oura app | This app |
+|---|---|---|
+| 1 Sept | 420 | 410 |
+| 3 Sept | 320 | **320** |
+| 4 Sept | 300 | **300** |
+| 12 Sept | 30 | **30** |
+| 14 Sept | 10 | **10** |
 
 **A caveat on the Oura source.** Oura does not publish a sleep debt duration —
 `sleep_time` returns `optimal_bedtime: null` on most days, and nothing in the v2
@@ -321,12 +350,15 @@ Put the result in `OURA_BASELINE_NEED_HOURS`. `OURA_DEBT_INCLUDE_NAPS` controls
 whether naps count toward each day's total; nights-only has fitted better in
 testing, so it defaults off.
 
-An exact match on every day should not be expected. Testing against three
-consecutive observed values found **no constant baseline that reproduces all
-three**, across both nap settings, both rounding modes, windows of 10/14/21 days
-and day-shifts either side — the best possible is one day off by one rounding
-step. Each day on its own solves to a baseline of 7:11-7:13, which suggests the
-formula is right and Oura's own baseline simply moves day to day.
+**Calibrate rather than reading the need off the app.** The need Oura displays
+(7:16 on this account) is about three minutes above the one that reproduces its
+debt figures (7:13) — and at ninefold amplification, three minutes is ~27
+minutes of debt. Using the displayed value gave a total error of 210 minutes
+across the eight observations; the calibrated value gives 70.
+
+An exact match every day should not be expected: the app rounds to 10 minutes,
+its sleep need drifts by a minute or two day to day, and the amplification turns
+either into a visible difference.
 
 The Oura app shows a sleep debt in minutes, but **no v2 endpoint exposes that
 number** — it is computed in the app. So when `DEBT_SOURCE = "oura"` the
