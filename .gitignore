@@ -14,6 +14,9 @@ pip-wheel-metadata/
 
 # go_to_bed specific
 config.py
+# The Settings page writes these next to config.py and both hold the token.
+config.py.bak
+config.py.tmp
 bedtime.ics
 
 # VS Code

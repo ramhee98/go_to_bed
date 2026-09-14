@@ -31,6 +31,8 @@ derives the recommendation from the nights you actually slept well instead.
   warning and then a final nudge at fifteen minutes
 - 📊 **Streamlit app** — tonight's plan, how your sleep need was derived, the
   nights ahead, and how each past night landed
+- ⚙️ **Settings page** — edit every setting from the browser and write it back to
+  `config.py`, comments intact. The Oura token is never shown or written there
 - 🔌 **Pluggable wake times** — `WAKE_SOURCE` selects where wake times come from;
   a calendar-driven source drops in without touching the model
 - Degrades gracefully: API errors print a message and return empty rather than
@@ -178,6 +180,22 @@ a glance, plus a download for the `.ics`.
 How each night landed against your sleep need, and where the debt came from.
 
 ![History](img/history.png)
+
+### Settings
+
+Every setting except the token, written straight back to `config.py`.
+
+![Settings](img/settings.png)
+
+Edits are surgical: only the lines you actually change are rewritten, so
+comments, ordering and any settings you added by hand survive. A `config.py.bak`
+copy is taken before each save, and the file is replaced atomically so an
+interrupted write can't leave a broken config.
+
+`OURA_TOKEN` is excluded by design — it is never read into the page and the
+writer refuses it outright. Values are validated and re-serialised as typed
+literals rather than pasted as text, so nothing typed into a form can execute
+when `config.py` is next imported.
 
 ## Adding calendar-driven wake times
 
