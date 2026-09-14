@@ -17,6 +17,7 @@ class BedtimePlan:
     time_in_bed_seconds: float      # target, after any debt adjustment
     debt_adjustment_seconds: float  # how much earlier debt pulled bedtime
     clamped: bool                   # True if a guard rail moved the bedtime
+    fixed: bool = False             # True if the bedtime came from config
     reasons: List[str] = field(default_factory=list)
 
     @property
@@ -127,11 +128,17 @@ def plan_night(
     max_debt_adjustment_minutes: int = 45,
     earliest_bedtime: Optional[str] = None,
     latest_bedtime: Optional[str] = None,
+    fixed_bedtime: Optional[datetime] = None,
 ) -> BedtimePlan:
-    """Back-calculate a bedtime from a wake time.
+    """Work out a bedtime for a given wake time.
 
-    bedtime = wake - (sleep need / efficiency) - a share of any sleep debt,
-    then held inside the configured guard rails.
+    Without `fixed_bedtime`: bedtime = wake - (sleep need / efficiency) - a
+    share of any sleep debt, then held inside the configured guard rails.
+
+    With `fixed_bedtime`: that time is used as given. The sleep need is still
+    computed, but only to report how the fixed time compares — a configured
+    bedtime is a decision, not a suggestion, so neither the debt adjustment
+    nor the guard rails move it.
     """
     reasons = []
 
@@ -142,6 +149,30 @@ def plan_night(
     )
     if profile.source == "fallback":
         reasons.append("Using the fallback sleep need — not enough good nights yet.")
+
+    if fixed_bedtime is not None:
+        actual = (wake_time - fixed_bedtime).total_seconds()
+        gap = actual - base_tib
+        if gap >= 0:
+            reasons.append(
+                f"Fixed bedtime gives {hhmm(actual)} in bed, "
+                f"{hhmm(gap)} over your {hhmm(base_tib)} target."
+            )
+        else:
+            reasons.append(
+                f"⚠️ Fixed bedtime gives {hhmm(actual)} in bed, "
+                f"{hhmm(-gap)} short of your {hhmm(base_tib)} target."
+            )
+        return BedtimePlan(
+            day=wake_time.date(),
+            bedtime=fixed_bedtime.replace(second=0, microsecond=0),
+            wake_time=wake_time,
+            time_in_bed_seconds=actual,
+            debt_adjustment_seconds=0.0,
+            clamped=False,
+            fixed=True,
+            reasons=reasons,
+        )
 
     adjustment = 0.0
     if debt_seconds > 0 and debt_recovery_nights > 0:
@@ -160,6 +191,7 @@ def plan_night(
             )
 
     target_tib = base_tib + adjustment
+
     bedtime = wake_time - timedelta(seconds=target_tib)
     # A recommendation accurate to the second is false precision, and reads
     # badly in a calendar event.
@@ -188,6 +220,7 @@ def plan_nights(
     days_ahead: int,
     debt_seconds: float = 0.0,
     start_day: Optional[date] = None,
+    bed_schedule=None,
     **kwargs,
 ) -> List[BedtimePlan]:
     """Plan the next `days_ahead` nights using any wake-time source.
@@ -207,6 +240,8 @@ def plan_nights(
         wake_time = wake_schedule.wake_time_for(day)
         if wake_time is None:
             continue
-        plans.append(plan_night(wake_time, profile, debt_seconds, **kwargs))
+        fixed = bed_schedule.bedtime_for(wake_time) if bed_schedule else None
+        plans.append(plan_night(wake_time, profile, debt_seconds,
+                                fixed_bedtime=fixed, **kwargs))
 
     return plans

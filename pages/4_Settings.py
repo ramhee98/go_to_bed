@@ -30,6 +30,11 @@ def widget(field, value):
     if field.kind == "bool":
         return st.checkbox(label, value=bool(value), help=help_text, key=key)
 
+    if field.kind == "choice":
+        options = field.choices or []
+        index = options.index(value) if value in options else 0
+        return st.selectbox(label, options, index=index, help=help_text, key=key)
+
     if field.kind == "int":
         return st.number_input(label, value=int(value if value is not None else 0),
                                step=1, help=help_text, key=key,

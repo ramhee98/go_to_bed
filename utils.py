@@ -13,6 +13,7 @@ from model.bedtime import hhmm, plan_nights, sleep_debt_seconds
 from model.sleep_need import build_profile, collect_nights
 from oura_api.client import fetch_daily_sleep, fetch_sleep_data
 from wake import build_wake_schedule
+from bed import build_bed_schedule
 
 # Chart colors, taken unchanged from the validated reference palette.
 # Light/dark are selected steps of the same hues, not an automatic flip.
@@ -128,12 +129,14 @@ def load_state(history_days=None):
 
     tz = resolve_timezone(setting("TIMEZONE", None))
     wake_schedule = build_wake_schedule(config, tz)
+    bed_schedule = build_bed_schedule(config, tz)
 
     plans = plan_nights(
         wake_schedule,
         profile,
         days_ahead=setting("DAYS_AHEAD", 14),
         debt_seconds=debt,
+        bed_schedule=bed_schedule,
         debt_recovery_nights=setting("DEBT_RECOVERY_NIGHTS", 7),
         max_debt_adjustment_minutes=setting("MAX_DEBT_ADJUSTMENT_MINUTES", 45),
         earliest_bedtime=setting("EARLIEST_BEDTIME", None),
@@ -148,6 +151,7 @@ def load_state(history_days=None):
         "debt": debt,
         "plans": plans,
         "wake_schedule": wake_schedule,
+        "bed_schedule": bed_schedule,
     }
 
 

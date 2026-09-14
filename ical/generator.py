@@ -122,10 +122,12 @@ def _alarms(spec, event_text: str, label: str) -> List[Alarm]:
     return alarms
 
 
-def _describe(plan: BedtimePlan, profile: SleepProfile, wake_note: str) -> str:
+def _describe(plan: BedtimePlan, profile: SleepProfile, wake_note: str,
+              bed_note: str = "") -> str:
     """The event description: the numbers, then why they came out that way."""
     lines = [
-        f"Bedtime: {plan.bedtime.strftime('%H:%M')}",
+        f"Bedtime: {plan.bedtime.strftime('%H:%M')}"
+        + (" (fixed)" if plan.fixed else ""),
         f"Wake up: {plan.wake_time.strftime('%H:%M')}",
         f"Time in bed: {hhmm(plan.actual_time_in_bed_seconds)}",
         f"Sleep need: {hhmm(profile.sleep_need_seconds)}",
@@ -137,6 +139,8 @@ def _describe(plan: BedtimePlan, profile: SleepProfile, wake_note: str) -> str:
         lines.append(f"Sleep debt adjustment: -{hhmm(plan.debt_adjustment_seconds)}")
 
     lines.append("")
+    if bed_note:
+        lines.append(bed_note)
     lines.append(wake_note)
     lines.extend(plan.reasons)
 
@@ -179,6 +183,7 @@ def generate_bedtime_calendar(
     profile: SleepProfile,
     wake_schedule,
     existing_calendar: Calendar,
+    bed_schedule=None,
     bed_event_duration_minutes: int = 15,
     bed_alarm_minutes_before=15,
     wake_event: bool = True,
@@ -215,7 +220,8 @@ def generate_bedtime_calendar(
     for plan in plans:
         day = plan.day.isoformat()
         wake_note = wake_schedule.describe(plan.day)
-        description = _describe(plan, profile, wake_note)
+        bed_note = bed_schedule.describe(plan.wake_time) if bed_schedule else ""
+        description = _describe(plan, profile, wake_note, bed_note)
 
         bed_end = plan.bedtime + timedelta(minutes=bed_event_duration_minutes)
         calendar.add_component(_build_event(

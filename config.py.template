@@ -27,6 +27,30 @@ WAKE_TIME_WEDNESDAY = None
 WAKE_TIME_THURSDAY = None
 WAKE_TIME_FRIDAY = None
 
+# --- Bedtimes ---------------------------------------------------------------
+
+# Where bedtimes come from.
+#   "computed" - back-calculated from your wake time, sleep need and debt
+#   "fixed"    - taken from the BED_TIME_* settings below
+BED_SOURCE = "computed"
+
+# Fixed bedtimes as "HH:MM", local time. Only used when BED_SOURCE = "fixed".
+# The day names the EVENING you go to bed, not the morning you get up:
+# BED_TIME_MONDAY is when you turn in on Monday night, waking Tuesday.
+# A time before noon is read as the small hours of the next morning, so
+# "00:30" on Friday means half past midnight on Saturday.
+BED_TIME_WEEKDAY = "23:00"
+BED_TIME_SATURDAY = "23:30"
+BED_TIME_SUNDAY = "22:30"
+
+# Optional per-day overrides, same as the wake times. Leave a day as None and
+# it uses BED_TIME_WEEKDAY above.
+BED_TIME_MONDAY = None
+BED_TIME_TUESDAY = None
+BED_TIME_WEDNESDAY = None
+BED_TIME_THURSDAY = None
+BED_TIME_FRIDAY = None
+
 # --- Personal sleep need ----------------------------------------------------
 
 # How many days of Oura history to learn your personal sleep need from.

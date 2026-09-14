@@ -17,6 +17,8 @@ from model.sleep_need import build_profile, normalize_efficiency, SleepProfile
 from ical.generator import parse_lead_times, _lead_text
 from wake import build_wake_schedule
 from wake.fixed import FixedWakeSchedule
+from bed import build_bed_schedule
+from bed.fixed import FixedBedSchedule
 
 TZ = ZoneInfo("Europe/Zurich")
 
@@ -218,6 +220,66 @@ def test_alarm_text_names_its_lead_time():
     assert _lead_text(60, "Bedtime") == "Bedtime in 1 hour"
     assert _lead_text(120, "Bedtime") == "Bedtime in 2 hours"
     assert _lead_text(90, "Bedtime") == "Bedtime in 1h 30m"
+
+
+def test_fixed_bedtime_is_used_as_given():
+    wake = datetime(2026, 9, 15, 6, 30, tzinfo=TZ)
+    fixed = datetime(2026, 9, 14, 23, 0, tzinfo=TZ)
+    plan = plan_night(wake, _profile(hours=8.0), debt_seconds=20 * 3600,
+                      fixed_bedtime=fixed, earliest_bedtime="21:00")
+    assert plan.bedtime == fixed
+    assert plan.fixed
+    # A configured bedtime is a decision: neither debt nor guard rails move it.
+    assert plan.debt_adjustment_seconds == 0
+    assert not plan.clamped
+    assert not any("Sleep debt" in r for r in plan.reasons)
+
+
+def test_fixed_bedtime_warns_when_it_is_short():
+    wake = datetime(2026, 9, 15, 6, 30, tzinfo=TZ)
+    short = plan_night(wake, _profile(hours=8.0, efficiency=1.0),
+                       fixed_bedtime=datetime(2026, 9, 14, 23, 30, tzinfo=TZ))
+    assert any("short of" in r for r in short.reasons)
+
+    ample = plan_night(wake, _profile(hours=7.0, efficiency=1.0),
+                       fixed_bedtime=datetime(2026, 9, 14, 22, 0, tzinfo=TZ))
+    assert any("over your" in r for r in ample.reasons)
+
+
+def test_bed_time_day_names_the_evening_you_turn_in():
+    # BED_TIME_MONDAY is Monday night, so it pairs with Tuesday's wake time.
+    schedule = FixedBedSchedule("23:00", "23:30", "22:30",
+                                per_day={0: "21:15"}, tz=TZ)
+    wake_tuesday = datetime(2026, 9, 15, 6, 30, tzinfo=TZ)   # Tue
+    bedtime = schedule.bedtime_for(wake_tuesday)
+    assert bedtime == datetime(2026, 9, 14, 21, 15, tzinfo=TZ)   # Mon evening
+    assert "Monday" in schedule.describe(wake_tuesday)
+
+
+def test_small_hours_bedtime_rolls_onto_the_wake_day():
+    # "00:30" on Friday means half past midnight on Saturday morning.
+    schedule = FixedBedSchedule("23:00", "23:30", "22:30",
+                                per_day={4: "00:30"}, tz=TZ)
+    wake_saturday = datetime(2026, 9, 19, 8, 0, tzinfo=TZ)
+    assert schedule.bedtime_for(wake_saturday) == datetime(2026, 9, 19, 0, 30, tzinfo=TZ)
+
+
+def test_bed_source_computed_means_no_schedule():
+    class Cfg:
+        BED_SOURCE = "computed"
+    assert build_bed_schedule(Cfg, TZ) is None
+
+
+def test_unknown_bed_source_falls_back_to_computed():
+    class Cfg:
+        BED_SOURCE = "nonsense"
+    assert build_bed_schedule(Cfg, TZ) is None
+
+
+def test_config_without_bed_keys_still_computes():
+    class OldConfig:
+        WAKE_TIME_WEEKDAY = "06:20"
+    assert build_bed_schedule(OldConfig, TZ) is None
 
 
 def test_hhmm_formatting():

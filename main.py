@@ -5,6 +5,7 @@ from oura_api.client import fetch_sleep_data, fetch_daily_sleep
 from model.sleep_need import build_profile
 from model.bedtime import sleep_debt_seconds, plan_nights, hhmm
 from wake import build_wake_schedule
+from bed import build_bed_schedule
 from ical.generator import (
     load_existing_calendar,
     generate_bedtime_calendar,
@@ -55,6 +56,9 @@ def main():
 
     tz = resolve_timezone(setting("TIMEZONE", None))
     wake_schedule = build_wake_schedule(config, tz)
+    bed_schedule = build_bed_schedule(config, tz)
+    if bed_schedule is not None:
+        print("  Bedtimes: fixed from config, not computed")
 
     days_ahead = setting("DAYS_AHEAD", 14)
     print(f"Planning the next {days_ahead} nights...")
@@ -63,6 +67,7 @@ def main():
         profile,
         days_ahead=days_ahead,
         debt_seconds=debt,
+        bed_schedule=bed_schedule,
         debt_recovery_nights=setting("DEBT_RECOVERY_NIGHTS", 7),
         max_debt_adjustment_minutes=setting("MAX_DEBT_ADJUSTMENT_MINUTES", 45),
         earliest_bedtime=setting("EARLIEST_BEDTIME", None),
@@ -88,6 +93,7 @@ def main():
         profile,
         wake_schedule,
         existing_calendar,
+        bed_schedule=bed_schedule,
         bed_event_duration_minutes=setting("BED_EVENT_DURATION_MINUTES", 15),
         bed_alarm_minutes_before=setting("BED_ALARM_MINUTES_BEFORE", 15),
         wake_event=setting("WAKE_EVENT", True),

@@ -17,6 +17,9 @@ derives the recommendation from the nights you actually slept well instead.
 - ⏰ **Wake times per day** — Monday–Friday, Saturday and Sunday configured
   separately so a late Sunday start never drags your weekday bedtime with it,
   plus an optional override for any individual weekday
+- 🛌 **Fixed bedtimes, optionally** — prefer a set routine to a computed one?
+  Configure bedtimes the same way, per day, and the app still tells you whether
+  that time actually covers your sleep need
 - 📉 **Sleep debt** — shortfalls over a rolling window pull your bedtime earlier,
   spread across several nights and capped, so recovery never demands one brutal
   early night
@@ -88,6 +91,36 @@ identical — "Bedtime in 1 hour", then "Bedtime in 15 min". Values are
 de-duplicated and ordered furthest-out first; anything unreadable is dropped
 with a warning rather than stopping the run.
 
+### Bedtimes
+
+By default the bedtime is computed. To keep a fixed routine instead, set
+`BED_SOURCE = "fixed"` and configure it exactly like the wake times:
+
+```python
+BED_SOURCE = "fixed"
+
+BED_TIME_WEEKDAY  = "23:00"   # any Mon-Fri night not overridden below
+BED_TIME_SATURDAY = "23:30"
+BED_TIME_SUNDAY   = "22:30"
+
+BED_TIME_FRIDAY   = "00:30"   # optional per-day override
+BED_TIME_MONDAY   = None      # None -> uses BED_TIME_WEEKDAY
+```
+
+**The day names the evening you turn in**, not the morning you get up:
+`BED_TIME_MONDAY` is Monday night, pairing with Tuesday's wake time. A time
+before noon is read as the small hours of the next morning, so `"00:30"` on
+Friday means half past midnight on Saturday.
+
+A fixed bedtime is a decision rather than a suggestion, so neither the sleep
+debt adjustment nor the `EARLIEST_BEDTIME` / `LATEST_BEDTIME` guard rails move
+it. Your sleep need is still computed, and the calendar event says how the fixed
+time compares:
+
+```
+⚠️ Fixed bedtime gives 7:20 in bed, 0:38 short of your 7:58 target.
+```
+
 ### Wake times
 
 Wake times resolve in three layers, most specific first:
@@ -154,6 +187,7 @@ python3 tests/test_model.py     # or: pytest
    `MIN_GOOD_NIGHTS` clear that bar, your own top quartile is used instead, and
    only if that still isn't enough does `FALLBACK_SLEEP_NEED_HOURS` apply.
 2. **Time in bed** — sleep need ÷ median efficiency.
+   Skipped entirely when `BED_SOURCE = "fixed"`.
 3. **Sleep debt** — shortfalls (never surpluses) over `DEBT_WINDOW_DAYS`, divided
    by `DEBT_RECOVERY_NIGHTS` and capped at `MAX_DEBT_ADJUSTMENT_MINUTES`.
    See [Sleep debt](#sleep-debt) below.
