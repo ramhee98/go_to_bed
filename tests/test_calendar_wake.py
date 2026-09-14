@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from wake import build_wake_schedule
-from wake.calendar import CalendarWakeSchedule, _matches_any
+from wake.calendar import CalendarWakeSchedule, _duration_minutes, _matches_any
 from wake.fixed import FixedWakeSchedule
 
 TZ = ZoneInfo("Europe/Zurich")
@@ -22,6 +22,7 @@ FIXTURE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
 
 def _schedule(**kwargs):
     defaults = dict(
+        skip_zero_length=False,
         sources=[FIXTURE],
         fallback=FixedWakeSchedule("07:00", "09:00", "09:00", tz=TZ),
         lead_minutes=90,
@@ -114,6 +115,9 @@ def test_a_lead_longer_than_the_day_is_held_at_midnight():
 
 def _short_day(**kwargs):
     # Lead of 30m and a 09:00 fallback so the filters' effect is visible.
+    # Zero-length skipping defaults on, so it is off here unless a test asks
+    # for it — otherwise it would mask the filter under test.
+    kwargs.setdefault("skip_zero_length", False)
     return _schedule(lead_minutes=30, earliest_wake=None,
                      fallback=FixedWakeSchedule("09:00", "09:00", "09:00", tz=TZ),
                      **kwargs)
@@ -131,11 +135,39 @@ def test_min_event_minutes_zero_disables_the_filter():
             .wake_time_for(date(2026, 9, 23)).time() == time(6, 30))
 
 
-def test_events_of_unknown_length_are_kept():
-    # 25 Sep has a 06:30 event with no DTEND. Dropping what we cannot measure
-    # would risk oversleeping, so it still counts.
-    assert (_short_day(min_event_minutes=60)
+def test_zero_length_events_can_be_ignored():
+    # 26 Sep: a 05:30 reminder with DTEND == DTSTART, then a real 10:00 meeting.
+    assert (_short_day(skip_zero_length=False)
+            .wake_time_for(date(2026, 9, 26)).time() == time(5, 0))
+    assert (_short_day(skip_zero_length=True)
+            .wake_time_for(date(2026, 9, 26)).time() == time(9, 0))
+
+
+def test_a_timed_event_without_an_end_is_zero_length():
+    # RFC 5545: DTSTART with no DTEND and no DURATION ends at its start, so
+    # 25 Sep's 06:30 entry is a point in time, not an event of unknown length.
+    assert (_short_day(skip_zero_length=False)
             .wake_time_for(date(2026, 9, 25)).time() == time(6, 0))
+    assert (_short_day(skip_zero_length=True)
+            .wake_time_for(date(2026, 9, 25)).time() == time(9, 0))
+
+
+def test_events_of_undeterminable_length_are_kept():
+    # 27 Sep pairs a timestamp start with a date end, so the length genuinely
+    # cannot be worked out. Dropping what can't be measured risks oversleeping.
+    plan = _short_day(skip_zero_length=True, min_event_minutes=60)
+    assert plan.wake_time_for(date(2026, 9, 27)).time() == time(6, 0)
+
+
+def test_duration_is_read_from_every_shape_of_event():
+    from icalendar import Calendar
+    calendar = Calendar.from_ical(open(FIXTURE, "rb").read())
+    lengths = {str(e.get("uid")): _duration_minutes(e)
+               for e in calendar.walk("VEVENT")}
+    assert lengths["standup@test"] == 15          # DTSTART + DTEND
+    assert lengths["explicitzero@test"] == 0      # DTEND == DTSTART
+    assert lengths["nodur@test"] == 0             # timed, no DTEND
+    assert lengths["malformed@test"] is None      # undeterminable
 
 
 def test_events_can_be_ignored_by_name():

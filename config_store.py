@@ -81,6 +81,11 @@ SETTINGS: List[Field] = [
           section="Calendar feeds", default=True),
     Field("CALENDAR_SKIP_FREE", "Ignore free and cancelled events", "bool",
           section="Calendar feeds", default=True),
+    Field("CALENDAR_SKIP_ZERO_LENGTH", "Ignore zero-length events", "bool",
+          section="Calendar feeds",
+          help="Point-in-time reminders. A timed event with no end time counts "
+               "as zero-length per the iCalendar spec.",
+          default=True),
     Field("CALENDAR_MIN_EVENT_MINUTES", "Ignore events shorter than (minutes)",
           "int", section="Calendar feeds",
           help="0 disables. Events whose length the feed doesn't state are kept.",

@@ -68,9 +68,14 @@ def _is_busy(component) -> bool:
 def _duration_minutes(component) -> Optional[float]:
     """Length of an event in minutes, or None when it can't be determined.
 
-    Returning None rather than guessing matters: an event whose length is
-    unknown is kept, because wrongly dropping a real early meeting means
-    oversleeping, while wrongly keeping one only means a needlessly early night.
+    A timed event with neither DTEND nor DURATION is zero-length, not unknown:
+    RFC 5545 §3.6.1 says it "ends on the same calendar date and time of day"
+    as its start. Those are the point-in-time reminders a calendar collects.
+
+    None is reserved for genuinely undeterminable cases — a malformed pairing
+    of a date with a timestamp. Those are kept, because wrongly dropping a real
+    early meeting means oversleeping, while wrongly keeping one only means a
+    needlessly early night.
     """
     duration = component.get("duration")
     if duration is not None:
@@ -79,12 +84,15 @@ def _duration_minutes(component) -> Optional[float]:
         except AttributeError:
             return None
 
+    start = component.get("dtstart")
     end = component.get("dtend")
+
     if end is None:
-        return None
+        # All-day events without DTEND span the day; timed ones are a point.
+        return None if (start is None or not isinstance(start.dt, datetime)) else 0.0
 
     try:
-        return (end.dt - component.get("dtstart").dt).total_seconds() / 60
+        return (end.dt - start.dt).total_seconds() / 60
     except (TypeError, AttributeError):
         # A DTSTART date paired with a DTEND timestamp, or vice versa.
         return None
@@ -176,6 +184,7 @@ class CalendarWakeSchedule(WakeSchedule):
         earliest_wake: Optional[str] = "05:00",
         skip_all_day: bool = True,
         skip_free: bool = True,
+        skip_zero_length: bool = True,
         min_event_minutes: int = 0,
         ignore_summaries: Optional[List[str]] = None,
         horizon_days: int = DEFAULT_HORIZON_DAYS,
@@ -188,6 +197,7 @@ class CalendarWakeSchedule(WakeSchedule):
         self.floor = parse_optional_time(earliest_wake, "CALENDAR_EARLIEST_WAKE")
         self.skip_all_day = skip_all_day
         self.skip_free = skip_free
+        self.skip_zero_length = skip_zero_length
         self.min_event_minutes = max(0, int(min_event_minutes or 0))
         self.ignore_summaries = [str(p) for p in (ignore_summaries or [])
                                  if str(p).strip()]
@@ -215,6 +225,7 @@ class CalendarWakeSchedule(WakeSchedule):
         loaded = 0
         skipped_by_name = 0
         skipped_by_length = 0
+        skipped_zero = 0
 
         for source in self.sources:
             text = _load_source(source)
@@ -237,12 +248,16 @@ class CalendarWakeSchedule(WakeSchedule):
                 if _matches_any(component.get("summary"), self.ignore_summaries):
                     skipped_by_name += 1
                     continue
-                if self.min_event_minutes:
+                if self.skip_zero_length or self.min_event_minutes:
                     length = _duration_minutes(component)
-                    # Unknown length is kept: see _duration_minutes.
-                    if length is not None and length < self.min_event_minutes:
-                        skipped_by_length += 1
-                        continue
+                    # Undeterminable length is kept: see _duration_minutes.
+                    if length is not None:
+                        if self.skip_zero_length and length <= 0:
+                            skipped_zero += 1
+                            continue
+                        if length < self.min_event_minutes:
+                            skipped_by_length += 1
+                            continue
 
                 start_value = component.get("dtstart").dt
                 horizon = (horizon_naive.replace(tzinfo=start_value.tzinfo)
@@ -261,6 +276,8 @@ class CalendarWakeSchedule(WakeSchedule):
         filtered = []
         if skipped_by_name:
             filtered.append(f"{skipped_by_name} by name")
+        if skipped_zero:
+            filtered.append(f"{skipped_zero} zero-length")
         if skipped_by_length:
             filtered.append(f"{skipped_by_length} shorter than "
                             f"{self.min_event_minutes}m")

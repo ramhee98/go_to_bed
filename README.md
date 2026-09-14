@@ -133,6 +133,7 @@ What it deliberately ignores:
 | `TRANSP:TRANSPARENT` | Marked free, so not a commitment |
 | `STATUS:CANCELLED` | It isn't happening |
 | Anything before `CALENDAR_EARLIEST_WAKE` | A stray 03:00 entry shouldn't demand a 01:30 start |
+| Zero-length events (`CALENDAR_SKIP_ZERO_LENGTH`) | Point-in-time reminders like "pay rent" |
 | Events shorter than `CALENDAR_MIN_EVENT_MINUTES` | A 15-minute standup rarely justifies an early night |
 | Titles matching `CALENDAR_IGNORE_SUMMARIES` | The recurring entries you don't actually attend |
 
@@ -154,6 +155,12 @@ pattern containing `*` or `?` is matched against the whole title, so
 `"*standup*"` for that). An event whose length the feed doesn't state is always
 kept — dropping what can't be measured risks oversleeping, while keeping it only
 risks a needlessly early night.
+
+A timed event with neither `DTEND` nor `DURATION` is **zero-length**, not
+unknown: RFC 5545 says it ends at its start. Those are the point-in-time
+reminders calendars accumulate, and `CALENDAR_SKIP_ZERO_LENGTH` (on by default)
+drops them. Genuinely undeterminable lengths — a malformed event pairing a
+timestamp with a date — are the ones that get kept.
 
 Recurring events are expanded (`RRULE`), including `EXDATE` cancellations, so a
 weekly lecture sets the alarm every week rather than only on its first date.

@@ -64,4 +64,22 @@ UID:nodur@test
 SUMMARY:Early start, no end time given
 DTSTART;TZID=Europe/Zurich:20260925T063000
 END:VEVENT
+BEGIN:VEVENT
+UID:explicitzero@test
+SUMMARY:Reminder with DTEND equal to DTSTART
+DTSTART;TZID=Europe/Zurich:20260926T053000
+DTEND;TZID=Europe/Zurich:20260926T053000
+END:VEVENT
+BEGIN:VEVENT
+UID:realafter@test
+SUMMARY:Actual meeting later that morning
+DTSTART;TZID=Europe/Zurich:20260926T100000
+DTEND;TZID=Europe/Zurich:20260926T113000
+END:VEVENT
+BEGIN:VEVENT
+UID:malformed@test
+SUMMARY:Malformed, timestamp start with date end
+DTSTART;TZID=Europe/Zurich:20260927T063000
+DTEND;VALUE=DATE:20260928
+END:VEVENT
 END:VCALENDAR
