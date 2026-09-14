@@ -403,3 +403,136 @@ def write_values(path: str, updates: dict) -> List[str]:
         handle.writelines(lines)
     os.replace(temporary, path)
     return changed
+
+
+# --- Template sync ----------------------------------------------------------
+#
+# config.py is created once from config.py.template and then diverges as the
+# app gains settings. Rather than make the user diff the two by hand — which is
+# how a config ends up with new keys and old code, or vice versa — a run adds
+# whatever the template has and the config lacks.
+
+
+@dataclass
+class Block:
+    """One setting in a config file, with the comments that introduce it."""
+
+    key: str
+    preamble: List[str]      # comments and blank lines above the assignment
+    body: List[str]          # the assignment itself, however many lines
+
+
+def parse_blocks(text: str) -> List[Block]:
+    """Split a config file into its settings, each carrying its comments.
+
+    Anything above an assignment since the previous one is that setting's
+    preamble, so a section header travels with the first setting under it.
+    """
+    lines = text.splitlines(keepends=True)
+    blocks: List[Block] = []
+    pending: List[str] = []
+    index = 0
+
+    while index < len(lines):
+        match = re.match(r"^([A-Z_][A-Z0-9_]*)\s*=", lines[index])
+        if not match:
+            pending.append(lines[index])
+            index += 1
+            continue
+
+        end = _assignment_end(lines, index)
+        blocks.append(Block(key=match.group(1),
+                            preamble=pending,
+                            body=lines[index:end]))
+        pending = []
+        index = end
+
+    return blocks
+
+
+def find_template(config_path: str) -> Optional[str]:
+    """Locate config.py.template beside the config file."""
+    candidate = config_path + ".template"
+    if os.path.exists(candidate):
+        return candidate
+    candidate = os.path.join(os.path.dirname(os.path.abspath(config_path)),
+                             "config.py.template")
+    return candidate if os.path.exists(candidate) else None
+
+
+def sync_with_template(config_path: str,
+                       template_path: Optional[str] = None) -> List[str]:
+    """Add settings the template has and config.py lacks. Returns the keys added.
+
+    Existing values are never touched — only absent keys are inserted, each
+    with the comments that document it in the template, positioned after the
+    nearest earlier setting they share with the config so sections stay
+    together rather than piling up at the end.
+    """
+    template_path = template_path or find_template(config_path)
+    # An explicitly named template that isn't there must be a no-op, not a
+    # crash: the sync runs on every start and must never block one.
+    if (not template_path
+            or not os.path.exists(template_path)
+            or not os.path.exists(config_path)):
+        return []
+
+    with open(config_path, "r", encoding="utf-8") as handle:
+        config_text = handle.read()
+    with open(template_path, "r", encoding="utf-8") as handle:
+        template_text = handle.read()
+
+    template_blocks = parse_blocks(template_text)
+    config_blocks = parse_blocks(config_text)
+    present = {block.key for block in config_blocks}
+
+    missing = [block for block in template_blocks if block.key not in present]
+    if not missing:
+        return []
+
+    lines = config_text.splitlines(keepends=True)
+    if lines and not lines[-1].endswith("\n"):
+        lines[-1] += "\n"
+
+    template_order = [block.key for block in template_blocks]
+    added = []
+
+    for block in missing:
+        # Insert after the nearest setting that precedes it in the template and
+        # already exists here, so a new key lands in its own section.
+        anchor = None
+        for key in reversed(template_order[:template_order.index(block.key)]):
+            if key in present:
+                anchor = key
+                break
+
+        chunk = list(block.preamble) + list(block.body)
+        if not chunk[0].strip():
+            chunk = chunk  # keep the blank line that separates it from above
+
+        if anchor is None:
+            lines.extend(chunk)
+        else:
+            position = _end_of_block(lines, anchor)
+            lines[position:position] = chunk
+
+        present.add(block.key)
+        added.append(block.key)
+
+    shutil.copyfile(config_path, config_path + ".bak")
+    temporary = config_path + ".tmp"
+    with open(temporary, "w", encoding="utf-8") as handle:
+        handle.writelines(lines)
+    os.replace(temporary, config_path)
+    return added
+
+
+def _end_of_block(lines: List[str], key: str) -> int:
+    """Index just past the assignment for `key`, or the end of the file."""
+    index = 0
+    while index < len(lines):
+        match = re.match(r"^([A-Z_][A-Z0-9_]*)\s*=", lines[index])
+        if match and match.group(1) == key:
+            return _assignment_end(lines, index)
+        index = _assignment_end(lines, index) if match else index + 1
+    return len(lines)

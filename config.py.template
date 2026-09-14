@@ -6,9 +6,10 @@ ICAL_OUTPUT_PATH = "./bedtime.ics"
 
 # --- Wake times -------------------------------------------------------------
 
-# Where wake times come from. "fixed" uses the three times below.
-# Future sources (e.g. "calendar", deriving the wake time from your first
-# appointment) plug in here without touching the rest of the app.
+# Where wake times come from.
+#   "fixed"    - the configured wake times below
+#   "calendar" - read the .ics feeds in CALENDAR_URLS and pull the alarm
+#                earlier when the day starts early
 WAKE_SOURCE = "fixed"
 
 # Wake times as "HH:MM", local time. Monday-Friday, Saturday and Sunday are
@@ -112,6 +113,13 @@ MAX_DEBT_ADJUSTMENT_MINUTES = 45
 # LATEST_BEDTIME may be after midnight; it is interpreted as the small hours.
 EARLIEST_BEDTIME = "21:00"
 LATEST_BEDTIME = "01:00"
+
+# --- Maintenance ------------------------------------------------------------
+
+# On each run, add any setting this file is missing that config.py.template
+# has, using the template's default and its explanatory comment. Existing
+# values are never touched. Set to False to manage config.py entirely by hand.
+AUTO_ADD_MISSING_SETTINGS = True
 
 # --- Calendar output --------------------------------------------------------
 

@@ -40,6 +40,9 @@ derives the recommendation from the nights you actually slept well instead.
   first commitment pulls your alarm, and with it that night's bedtime, earlier.
   A *late* first event never makes you sleep in
 - 🔌 **Pluggable wake times** — `WAKE_SOURCE` selects where wake times come from
+- 🔁 **Self-updating config** — a run adds any setting `config.py.template` has
+  that your `config.py` lacks, with its comment and in the right section. Your
+  values are never touched, so upgrading is just `git pull`
 - Degrades gracefully: API errors print a message and return empty rather than
   raising, and a thin history falls back to a configured default
 
@@ -272,6 +275,26 @@ Two behaviours worth knowing:
   typical night. If most of your nights fall short, the cap does the work rather
   than the arithmetic — raise `MAX_DEBT_ADJUSTMENT_MINUTES` if you want the full
   correction.
+
+## Keeping config.py up to date
+
+`config.py` is created once from `config.py.template` and then drifts as the app
+gains settings. Each run tops it up:
+
+```
+Added 1 new setting(s) from config.py.template: AUTO_ADD_MISSING_SETTINGS
+   Previous version kept at /path/to/config.py.bak
+```
+
+Only **missing** keys are added — your values, your comments and any settings
+you added yourself are left alone. Each addition arrives with the comment that
+documents it in the template, placed in the same section rather than appended to
+the bottom, so the file stays readable rather than growing a junk drawer.
+
+The `.bak` is written only when something is actually added, so ordinary runs
+don't churn. Set `AUTO_ADD_MISSING_SETTINGS = False` to manage `config.py`
+entirely by hand; a missing or unreadable template is a no-op either way, so the
+sync can never block a run.
 
 ## Pages
 

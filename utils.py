@@ -5,9 +5,12 @@ numbers — a page that recomputed the profile its own way would eventually
 disagree with the calendar, which is the one thing that must not happen.
 """
 
+import importlib
+
 import streamlit as st
 
 import config
+from config_store import sync_with_template
 from ical.generator import resolve_timezone
 from model.bedtime import hhmm, plan_nights, sleep_debt_seconds
 from model.sleep_need import build_profile, collect_nights
@@ -102,12 +105,30 @@ def load_oura(history_days: int):
     return sessions, daily
 
 
+def sync_config() -> list:
+    """Add any settings the template has and config.py lacks. Returns the keys.
+
+    The app reads config.py the same way main.py does, so it performs the same
+    top-up rather than failing on a setting a newer page expects.
+    """
+    if not setting("AUTO_ADD_MISSING_SETTINGS", True):
+        return []
+    try:
+        added = sync_with_template(config.__file__)
+    except OSError:
+        return []
+    if added:
+        importlib.reload(config)
+    return added
+
+
 def load_state(history_days=None):
     """Load everything a page needs: raw data, profile, debt, plans.
 
     This mirrors `main.py` step for step, so what a page shows is exactly what
     the next `python3 main.py` run will write into the calendar.
     """
+    sync_config()
     history_days = history_days or setting("HISTORY_DAYS", 90)
     sessions, daily = load_oura(history_days)
 

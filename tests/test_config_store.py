@@ -12,6 +12,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config_store import (
     SETTINGS,
+    parse_blocks,
+    sync_with_template,
     ValidationError,
     coerce,
     parse_minutes_list,
@@ -202,6 +204,144 @@ def test_bad_time_is_rejected():
 def test_blank_optional_fields_become_none():
     assert coerce(_field("WAKE_TIME_MONDAY"), "") is None
     assert coerce(_field("TIMEZONE"), "  ") is None
+
+
+TEMPLATE = '''# Token comment
+OURA_TOKEN = "OURA_PERSONAL_ACCESS_TOKEN"
+
+# --- Wake times -------------------------------------------------------------
+
+# Weekday wake time
+WAKE_TIME_WEEKDAY = "06:30"
+WAKE_TIME_MONDAY = None
+
+# --- New section ------------------------------------------------------------
+
+# A list setting added in a later version
+CALENDAR_URLS = [
+    # "https://example.com/cal.ics",
+]
+
+# A trailing scalar
+DAYS_AHEAD = 14
+'''
+
+STALE = '''# Token comment
+OURA_TOKEN = "MY-REAL-TOKEN"
+
+# --- Wake times -------------------------------------------------------------
+
+# Weekday wake time
+WAKE_TIME_WEEKDAY = "05:15"
+
+# Something I added myself
+MY_OWN_SETTING = 42
+'''
+
+
+def _pair():
+    here = os.path.dirname(os.path.abspath(__file__))
+    config_path = os.path.join(here, "cfg_sync.py")
+    template_path = os.path.join(here, "cfg_sync.py.template")
+    with open(config_path, "w", encoding="utf-8") as handle:
+        handle.write(STALE)
+    with open(template_path, "w", encoding="utf-8") as handle:
+        handle.write(TEMPLATE)
+    return config_path, template_path
+
+
+def _cleanup(*paths):
+    for path in paths:
+        for suffix in ("", ".bak", ".tmp"):
+            if os.path.exists(path + suffix):
+                os.remove(path + suffix)
+
+
+def test_sync_adds_only_missing_settings():
+    config_path, template_path = _pair()
+    try:
+        added = sync_with_template(config_path, template_path)
+        assert sorted(added) == ["CALENDAR_URLS", "DAYS_AHEAD", "WAKE_TIME_MONDAY"]
+    finally:
+        _cleanup(config_path, template_path)
+
+
+def test_sync_never_changes_existing_values_or_the_token():
+    import importlib.util
+    config_path, template_path = _pair()
+    try:
+        sync_with_template(config_path, template_path)
+        spec = importlib.util.spec_from_file_location("cfg_sync", config_path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        assert module.OURA_TOKEN == "MY-REAL-TOKEN"     # not the placeholder
+        assert module.WAKE_TIME_WEEKDAY == "05:15"      # not the template default
+        assert module.MY_OWN_SETTING == 42              # hand-added survives
+        assert module.DAYS_AHEAD == 14                  # new default arrives
+        assert module.CALENDAR_URLS == []
+    finally:
+        _cleanup(config_path, template_path)
+
+
+def test_sync_brings_the_explaining_comments_along():
+    config_path, template_path = _pair()
+    try:
+        sync_with_template(config_path, template_path)
+        written = open(config_path).read()
+        assert "# --- New section" in written
+        assert "# A list setting added in a later version" in written
+    finally:
+        _cleanup(config_path, template_path)
+
+
+def test_sync_places_settings_in_template_order():
+    config_path, template_path = _pair()
+    try:
+        sync_with_template(config_path, template_path)
+        written = open(config_path).read()
+        # The per-day override belongs beside its weekday setting, above the
+        # section that follows it in the template — not appended at the end.
+        assert (written.index("WAKE_TIME_MONDAY")
+                < written.index("CALENDAR_URLS")
+                < written.index("DAYS_AHEAD"))
+        assert written.index("WAKE_TIME_WEEKDAY") < written.index("WAKE_TIME_MONDAY")
+    finally:
+        _cleanup(config_path, template_path)
+
+
+def test_sync_is_idempotent():
+    config_path, template_path = _pair()
+    try:
+        sync_with_template(config_path, template_path)
+        first = open(config_path).read()
+        assert sync_with_template(config_path, template_path) == []
+        assert open(config_path).read() == first
+    finally:
+        _cleanup(config_path, template_path)
+
+
+def test_sync_output_is_valid_python():
+    import ast as ast_module
+    config_path, template_path = _pair()
+    try:
+        sync_with_template(config_path, template_path)
+        ast_module.parse(open(config_path).read())
+    finally:
+        _cleanup(config_path, template_path)
+
+
+def test_sync_without_a_template_is_a_no_op():
+    config_path, template_path = _pair()
+    try:
+        assert sync_with_template(config_path, "/no/such/template") == []
+    finally:
+        _cleanup(config_path, template_path)
+
+
+def test_parse_blocks_keeps_multiline_bodies_whole():
+    blocks = {b.key: b for b in parse_blocks(TEMPLATE)}
+    assert len(blocks["CALENDAR_URLS"].body) == 3      # opening, comment, close
+    assert len(blocks["DAYS_AHEAD"].body) == 1
 
 
 if __name__ == "__main__":

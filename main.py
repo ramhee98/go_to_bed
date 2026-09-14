@@ -1,5 +1,8 @@
+import importlib
+
 import config
 from config import OURA_TOKEN, ICAL_OUTPUT_PATH
+from config_store import sync_with_template
 
 from oura_api.client import fetch_sleep_data, fetch_daily_sleep
 from model.sleep_need import build_profile
@@ -19,7 +22,32 @@ def setting(name, default):
     return getattr(config, name, default)
 
 
+def sync_config():
+    """Add settings the template has and config.py lacks.
+
+    A config written by an older version is missing whatever has been added
+    since, and hunting those down by hand is how a deployment ends up with new
+    code reading settings that aren't there. Existing values are never touched.
+    """
+    if not setting("AUTO_ADD_MISSING_SETTINGS", True):
+        return
+
+    try:
+        added = sync_with_template(config.__file__)
+    except OSError as error:
+        print(f"⚠️  Could not update config.py from the template: {error}")
+        return
+
+    if added:
+        print(f"Added {len(added)} new setting(s) from config.py.template: "
+              f"{', '.join(added)}")
+        print(f"   Previous version kept at {config.__file__}.bak")
+        importlib.reload(config)
+
+
 def main():
+    sync_config()
+
     history_days = setting("HISTORY_DAYS", 90)
 
     print(f"Fetching sleep history for the past {history_days} days...")
