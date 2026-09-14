@@ -36,21 +36,36 @@ if not rows:
 df = pd.DataFrame(rows).sort_values("Night")
 df["Night"] = pd.to_datetime(df["Night"])
 
-window = setting("DEBT_WINDOW_DAYS", 14)
-short_nights = int((df.tail(window)["Delta"] < 0).sum())
+# Offer only windows the history can actually fill. With the default
+# HISTORY_DAYS of 90 there are ~80 nights, so "Last 90 nights" would be an
+# option that silently does exactly what "Everything" does.
+CHOICES = {label: span
+           for label, span in {"Last 14 nights": 14, "Last 30 nights": 30,
+                               "Last 90 nights": 90}.items()
+           if span < len(df)}
+CHOICES["Everything"] = None
 
-CHOICES = {"Last 14 nights": 14, "Last 30 nights": 30,
-           "Last 90 nights": 90, "Everything": None}
-choice = st.radio("Window", list(CHOICES), index=1, horizontal=True,
-                  label_visibility="collapsed")
+labels = list(CHOICES)
+choice = st.radio("Window", labels, index=min(1, len(labels) - 1),
+                  horizontal=True, label_visibility="collapsed")
 span = CHOICES[choice]
 view = df if span is None else df.tail(span)
 
+# Sleep debt is deliberately NOT filtered: it is computed over
+# DEBT_WINDOW_DAYS because that is the window that actually moves tonight's
+# bedtime. Rescoping it to the chosen view would show a number the model never
+# uses. The other two metrics describe whatever is on screen, so they follow
+# the filter — hence the explicit "last N days" caption on the debt tile.
+window = setting("DEBT_WINDOW_DAYS", 14)
+short_nights = int((view["Delta"] < 0).sum())
+
 col1, col2, col3 = st.columns(3)
-col1.metric("Sleep debt", hhmm(state["debt"]), delta=f"last {window} days",
-            delta_color="off")
-col2.metric("Short nights", f"{short_nights} of {min(window, len(df))}")
-col3.metric("Median night", hhmm(df["Slept"].median() * 3600))
+col1.metric("Sleep debt", hhmm(state["debt"]),
+            delta=f"fixed: last {window} days", delta_color="off")
+col2.metric("Short nights", f"{short_nights} of {len(view)}",
+            delta=choice.lower(), delta_color="off")
+col3.metric("Median night", hhmm(view["Slept"].median() * 3600),
+            delta=choice.lower(), delta_color="off")
 
 st.subheader("Nightly shortfall and surplus")
 st.caption(
