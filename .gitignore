@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg
+*.egg-info/
+dist/
+build/
+.env
+.venv
+venv/
+env/
+pip-wheel-metadata/
+*.log
+
+# go_to_bed specific
+config.py
+bedtime.ics
+
+# VS Code
+.vscode/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db

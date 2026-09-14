@@ -1,0 +1,77 @@
+# Your Oura API personal access token (requires 'sleep' and 'daily' scopes)
+OURA_TOKEN = "OURA_PERSONAL_ACCESS_TOKEN"
+
+# Path where the generated iCalendar (.ics) file will be saved
+ICAL_OUTPUT_PATH = "./bedtime.ics"
+
+# --- Wake times -------------------------------------------------------------
+
+# Where wake times come from. "fixed" uses the three times below.
+# Future sources (e.g. "calendar", deriving the wake time from your first
+# appointment) plug in here without touching the rest of the app.
+WAKE_SOURCE = "fixed"
+
+# Wake times as "HH:MM", local time. Monday-Friday, Saturday and Sunday are
+# configured separately so a later weekend start doesn't drag your weekday
+# bedtime around.
+WAKE_TIME_WEEKDAY = "06:30"
+WAKE_TIME_SATURDAY = "08:00"
+WAKE_TIME_SUNDAY = "08:00"
+
+# --- Personal sleep need ----------------------------------------------------
+
+# How many days of Oura history to learn your personal sleep need from.
+# 60-90 days gives a stable estimate without dragging in an old season.
+HISTORY_DAYS = 90
+
+# A night counts as "good" when its Oura sleep score is at least this value.
+# Your sleep need is the median time you actually slept on good nights.
+GOOD_SLEEP_SCORE = 80
+
+# Minimum number of good nights required before the personal estimate is
+# trusted. Below this, FALLBACK_SLEEP_NEED_HOURS is used instead.
+MIN_GOOD_NIGHTS = 5
+
+# Sleep need to fall back on when there isn't enough history yet.
+FALLBACK_SLEEP_NEED_HOURS = 8.0
+
+# --- Sleep debt -------------------------------------------------------------
+
+# Rolling window (in days) used to accumulate sleep debt.
+DEBT_WINDOW_DAYS = 14
+
+# Debt is paid back gradually, spread across this many nights, rather than all
+# in one brutally early bedtime.
+DEBT_RECOVERY_NIGHTS = 7
+
+# Hard cap (in minutes) on how much earlier sleep debt may pull your bedtime.
+MAX_DEBT_ADJUSTMENT_MINUTES = 45
+
+# --- Guard rails ------------------------------------------------------------
+
+# Never recommend a bedtime outside this window ("HH:MM", local time).
+# LATEST_BEDTIME may be after midnight; it is interpreted as the small hours.
+EARLIEST_BEDTIME = "21:00"
+LATEST_BEDTIME = "01:00"
+
+# --- Calendar output --------------------------------------------------------
+
+# How many nights ahead to plan.
+DAYS_AHEAD = 14
+
+# Optional: render all events in this IANA timezone (e.g. "Europe/Zurich").
+# Leave as None to use the machine's local timezone.
+TIMEZONE = None
+
+# Length (in minutes) of the "Go to bed" event.
+BED_EVENT_DURATION_MINUTES = 15
+
+# Minutes before bedtime to fire the calendar alarm. Set to None for no alarm.
+BED_ALARM_MINUTES_BEFORE = 15
+
+# Add a "Wake up" event as well. Set to False if your alarm clock already
+# covers that and you only want the bedtime nudge.
+WAKE_EVENT = True
+
+# Minutes before wake time to fire the wake alarm. Set to None for no alarm.
+WAKE_ALARM_MINUTES_BEFORE = 0
