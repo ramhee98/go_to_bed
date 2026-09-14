@@ -10,6 +10,7 @@ that starts earlier than usual pulls the alarm forward — and with it, by way o
 the sleep model, that night's bedtime.
 """
 
+import fnmatch
 import os
 from datetime import date, datetime, time, timedelta, tzinfo
 from typing import Dict, List, Optional
@@ -62,6 +63,56 @@ def _is_busy(component) -> bool:
     transparency = str(component.get("transp") or "").strip().upper()
     status = str(component.get("status") or "").strip().upper()
     return transparency != "TRANSPARENT" and status != "CANCELLED"
+
+
+def _duration_minutes(component) -> Optional[float]:
+    """Length of an event in minutes, or None when it can't be determined.
+
+    Returning None rather than guessing matters: an event whose length is
+    unknown is kept, because wrongly dropping a real early meeting means
+    oversleeping, while wrongly keeping one only means a needlessly early night.
+    """
+    duration = component.get("duration")
+    if duration is not None:
+        try:
+            return duration.dt.total_seconds() / 60
+        except AttributeError:
+            return None
+
+    end = component.get("dtend")
+    if end is None:
+        return None
+
+    try:
+        return (end.dt - component.get("dtstart").dt).total_seconds() / 60
+    except (TypeError, AttributeError):
+        # A DTSTART date paired with a DTEND timestamp, or vice versa.
+        return None
+
+
+def _matches_any(summary, patterns: List[str]) -> bool:
+    """True if an event title matches one of the ignore patterns.
+
+    Matching is case-insensitive. A plain word matches anywhere in the title,
+    so "lunch" catches "Team Lunch"; a pattern containing * or ? is matched
+    against the whole title as a glob, so "standup*" catches only titles that
+    start with it.
+    """
+    text = str(summary or "").strip().lower()
+    if not text:
+        return False
+
+    for pattern in patterns:
+        needle = str(pattern).strip().lower()
+        if not needle:
+            continue
+        if any(character in needle for character in "*?["):
+            if fnmatch.fnmatch(text, needle):
+                return True
+        elif needle in text:
+            return True
+
+    return False
 
 
 def _expand(component, horizon: datetime) -> List[datetime]:
@@ -125,6 +176,8 @@ class CalendarWakeSchedule(WakeSchedule):
         earliest_wake: Optional[str] = "05:00",
         skip_all_day: bool = True,
         skip_free: bool = True,
+        min_event_minutes: int = 0,
+        ignore_summaries: Optional[List[str]] = None,
         horizon_days: int = DEFAULT_HORIZON_DAYS,
         tz: Optional[tzinfo] = None,
     ):
@@ -135,6 +188,9 @@ class CalendarWakeSchedule(WakeSchedule):
         self.floor = parse_optional_time(earliest_wake, "CALENDAR_EARLIEST_WAKE")
         self.skip_all_day = skip_all_day
         self.skip_free = skip_free
+        self.min_event_minutes = max(0, int(min_event_minutes or 0))
+        self.ignore_summaries = [str(p) for p in (ignore_summaries or [])
+                                 if str(p).strip()]
         self.horizon_days = horizon_days
         self.tz = tz
         self._first_event: Optional[Dict[date, datetime]] = None
@@ -157,6 +213,8 @@ class CalendarWakeSchedule(WakeSchedule):
 
         horizon_naive = datetime.now() + timedelta(days=self.horizon_days)
         loaded = 0
+        skipped_by_name = 0
+        skipped_by_length = 0
 
         for source in self.sources:
             text = _load_source(source)
@@ -176,6 +234,15 @@ class CalendarWakeSchedule(WakeSchedule):
                     continue
                 if self.skip_all_day and _is_all_day(component):
                     continue
+                if _matches_any(component.get("summary"), self.ignore_summaries):
+                    skipped_by_name += 1
+                    continue
+                if self.min_event_minutes:
+                    length = _duration_minutes(component)
+                    # Unknown length is kept: see _duration_minutes.
+                    if length is not None and length < self.min_event_minutes:
+                        skipped_by_length += 1
+                        continue
 
                 start_value = component.get("dtstart").dt
                 horizon = (horizon_naive.replace(tzinfo=start_value.tzinfo)
@@ -191,8 +258,16 @@ class CalendarWakeSchedule(WakeSchedule):
                     if day not in earliest or local < earliest[day]:
                         earliest[day] = local
 
+        filtered = []
+        if skipped_by_name:
+            filtered.append(f"{skipped_by_name} by name")
+        if skipped_by_length:
+            filtered.append(f"{skipped_by_length} shorter than "
+                            f"{self.min_event_minutes}m")
+        suffix = f" ({', '.join(filtered)} ignored)" if filtered else ""
+
         print(f"   Read {loaded} of {len(self.sources)} calendar source(s); "
-              f"{len(earliest)} day(s) with events.")
+              f"{len(earliest)} day(s) with events{suffix}.")
         return earliest
 
     def _index(self) -> Dict[date, datetime]:

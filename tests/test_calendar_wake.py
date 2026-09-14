@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from wake import build_wake_schedule
-from wake.calendar import CalendarWakeSchedule
+from wake.calendar import CalendarWakeSchedule, _matches_any
 from wake.fixed import FixedWakeSchedule
 
 TZ = ZoneInfo("Europe/Zurich")
@@ -110,6 +110,64 @@ def test_a_lead_longer_than_the_day_is_held_at_midnight():
     plan = _schedule(lead_minutes=600, earliest_wake=None,
                      fallback=FixedWakeSchedule("11:00", "11:00", "11:00", tz=TZ))
     assert plan.wake_time_for(date(2026, 9, 15)).time() == time(0, 0)
+
+
+def _short_day(**kwargs):
+    # Lead of 30m and a 09:00 fallback so the filters' effect is visible.
+    return _schedule(lead_minutes=30, earliest_wake=None,
+                     fallback=FixedWakeSchedule("09:00", "09:00", "09:00", tz=TZ),
+                     **kwargs)
+
+
+def test_short_events_can_be_ignored():
+    # 23 Sep: a 15-minute standup at 07:00, then a 90-minute review at 09:30.
+    assert _short_day().wake_time_for(date(2026, 9, 23)).time() == time(6, 30)
+    assert (_short_day(min_event_minutes=30)
+            .wake_time_for(date(2026, 9, 23)).time() == time(9, 0))
+
+
+def test_min_event_minutes_zero_disables_the_filter():
+    assert (_short_day(min_event_minutes=0)
+            .wake_time_for(date(2026, 9, 23)).time() == time(6, 30))
+
+
+def test_events_of_unknown_length_are_kept():
+    # 25 Sep has a 06:30 event with no DTEND. Dropping what we cannot measure
+    # would risk oversleeping, so it still counts.
+    assert (_short_day(min_event_minutes=60)
+            .wake_time_for(date(2026, 9, 25)).time() == time(6, 0))
+
+
+def test_events_can_be_ignored_by_name():
+    # 24 Sep: "Team Lunch with the department" at 06:30.
+    assert _short_day().wake_time_for(date(2026, 9, 24)).time() == time(6, 0)
+    assert (_short_day(ignore_summaries=["lunch"])
+            .wake_time_for(date(2026, 9, 24)).time() == time(9, 0))
+
+
+def test_name_matching_is_case_insensitive_and_substring():
+    assert _matches_any("Daily standup", ["standup"])
+    assert _matches_any("Daily standup", ["STANDUP"])
+    assert not _matches_any("Daily standup", ["lunch"])
+    assert not _matches_any("", ["anything"])
+    assert not _matches_any("Daily standup", [])
+    assert not _matches_any("Daily standup", ["  ", None])
+
+
+def test_glob_patterns_match_the_whole_title():
+    # A pattern with a wildcard is anchored, so it can be precise where a
+    # plain substring would be too eager.
+    assert _matches_any("Daily standup", ["daily*"])
+    assert _matches_any("Daily standup", ["*standup*"])
+    assert not _matches_any("Daily standup", ["standup*"])
+    assert _matches_any("OOO - Ramon", ["ooo*"])
+    assert not _matches_any("Room booking", ["ooo*"])
+
+
+def test_both_filters_apply_together():
+    plan = _short_day(min_event_minutes=30, ignore_summaries=["lunch"])
+    assert plan.wake_time_for(date(2026, 9, 23)).time() == time(9, 0)
+    assert plan.wake_time_for(date(2026, 9, 24)).time() == time(9, 0)
 
 
 def test_config_selects_the_calendar_source():

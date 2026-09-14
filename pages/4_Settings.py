@@ -66,7 +66,7 @@ def widget(field, value):
     if field.kind == "lines":
         text = "\n".join(value) if isinstance(value, (list, tuple)) else (value or "")
         return st.text_area(label, value=text, height=110,
-                            placeholder="https://example.com/calendar.ics",
+                            placeholder=field.placeholder or None,
                             help=help_text, key=key)
 
     if field.kind == "minutes":

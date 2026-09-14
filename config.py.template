@@ -54,6 +54,19 @@ CALENDAR_SKIP_ALL_DAY = True
 # Ignore events marked free or cancelled rather than busy.
 CALENDAR_SKIP_FREE = True
 
+# Ignore events shorter than this many minutes. A 5-minute reminder or a
+# 15-minute standup is rarely worth getting up early for. 0 disables it.
+# An event whose length the feed doesn't state is always kept.
+CALENDAR_MIN_EVENT_MINUTES = 0
+
+# Ignore events by title. Matching is case-insensitive; a plain word matches
+# anywhere in the title, so "lunch" catches "Team Lunch". Use * or ? to match
+# the whole title as a pattern, e.g. "standup*" or "OOO*".
+CALENDAR_IGNORE_SUMMARIES = [
+    # "lunch",
+    # "standup*",
+]
+
 # --- Bedtimes ---------------------------------------------------------------
 
 # Where bedtimes come from.

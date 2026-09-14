@@ -44,6 +44,8 @@ def _calendar(cfg, tz) -> WakeSchedule:
         earliest_wake=getattr(cfg, "CALENDAR_EARLIEST_WAKE", "05:00"),
         skip_all_day=getattr(cfg, "CALENDAR_SKIP_ALL_DAY", True),
         skip_free=getattr(cfg, "CALENDAR_SKIP_FREE", True),
+        min_event_minutes=getattr(cfg, "CALENDAR_MIN_EVENT_MINUTES", 0),
+        ignore_summaries=getattr(cfg, "CALENDAR_IGNORE_SUMMARIES", []),
         tz=tz,
     )
 

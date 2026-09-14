@@ -35,6 +35,7 @@ class Field:
     minimum: Optional[float] = None
     maximum: Optional[float] = None
     choices: Optional[List[str]] = None
+    placeholder: str = ""
     section: str = "General"
 
 
@@ -63,7 +64,8 @@ SETTINGS: List[Field] = [
           help="'fixed' uses the configured wake times. 'calendar' reads the "
                "feeds below and can pull the alarm earlier."),
     Field("CALENDAR_URLS", "Calendar feeds", "lines", section="Calendar feeds",
-          help="One .ics URL or local path per line.", default=[]),
+          help="One .ics URL or local path per line.", default=[],
+          placeholder="https://example.com/calendar.ics"),
     Field("CALENDAR_LEAD_MINUTES", "Lead time (minutes)", "int",
           section="Calendar feeds",
           help="Getting ready plus travel before the first event.",
@@ -79,6 +81,16 @@ SETTINGS: List[Field] = [
           section="Calendar feeds", default=True),
     Field("CALENDAR_SKIP_FREE", "Ignore free and cancelled events", "bool",
           section="Calendar feeds", default=True),
+    Field("CALENDAR_MIN_EVENT_MINUTES", "Ignore events shorter than (minutes)",
+          "int", section="Calendar feeds",
+          help="0 disables. Events whose length the feed doesn't state are kept.",
+          default=0, minimum=0, maximum=1440),
+    Field("CALENDAR_IGNORE_SUMMARIES", "Ignore events named", "lines",
+          section="Calendar feeds",
+          help="One per line, case-insensitive. A plain word matches anywhere "
+               "in the title ('lunch'); use * to match the whole title "
+               "('standup*').",
+          default=[], placeholder="lunch\nstandup*"),
 
     Field("BED_SOURCE", "Bedtime source", "choice", section="Bedtimes",
           choices=["computed", "fixed"], default="computed",

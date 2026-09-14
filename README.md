@@ -133,6 +133,27 @@ What it deliberately ignores:
 | `TRANSP:TRANSPARENT` | Marked free, so not a commitment |
 | `STATUS:CANCELLED` | It isn't happening |
 | Anything before `CALENDAR_EARLIEST_WAKE` | A stray 03:00 entry shouldn't demand a 01:30 start |
+| Events shorter than `CALENDAR_MIN_EVENT_MINUTES` | A 15-minute standup rarely justifies an early night |
+| Titles matching `CALENDAR_IGNORE_SUMMARIES` | The recurring entries you don't actually attend |
+
+Filtering by title:
+
+```python
+CALENDAR_MIN_EVENT_MINUTES = 30      # 0 disables
+
+CALENDAR_IGNORE_SUMMARIES = [
+    "lunch",        # matches anywhere: catches "Team Lunch"
+    "daily*",       # contains * -> matches the whole title
+    "OOO*",
+]
+```
+
+Matching is case-insensitive. A plain word matches anywhere in the title; a
+pattern containing `*` or `?` is matched against the whole title, so
+`"standup*"` catches "Standup — backend" but not "Daily standup" (use
+`"*standup*"` for that). An event whose length the feed doesn't state is always
+kept — dropping what can't be measured risks oversleeping, while keeping it only
+risks a needlessly early night.
 
 Recurring events are expanded (`RRULE`), including `EXDATE` cancellations, so a
 weekly lecture sets the alarm every week rather than only on its first date.
