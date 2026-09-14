@@ -156,8 +156,41 @@ python3 tests/test_model.py     # or: pytest
 2. **Time in bed** — sleep need ÷ median efficiency.
 3. **Sleep debt** — shortfalls (never surpluses) over `DEBT_WINDOW_DAYS`, divided
    by `DEBT_RECOVERY_NIGHTS` and capped at `MAX_DEBT_ADJUSTMENT_MINUTES`.
+   See [Sleep debt](#sleep-debt) below.
 4. **Bedtime** — wake time − time in bed − debt adjustment, held between
    `EARLIEST_BEDTIME` and `LATEST_BEDTIME`.
+
+### Sleep debt
+
+For every night inside `DEBT_WINDOW_DAYS`:
+
+```
+shortfall = sleep_need - time_asleep
+if shortfall > 0:  debt += shortfall
+```
+
+Then, per planned night:
+
+```
+adjustment = min(debt / DEBT_RECOVERY_NIGHTS, MAX_DEBT_ADJUSTMENT_MINUTES)
+```
+
+**Only deficits count.** A night longer than your sleep need adds nothing — the
+surplus is discarded rather than credited, so a long Saturday does not repay a
+short Tuesday. Naps are excluded here too; only Oura's `long_sleep` counts.
+
+**Debt is repaid gradually.** Dividing by `DEBT_RECOVERY_NIGHTS` and capping the
+result keeps a bad fortnight from demanding one punishing early night.
+
+Two behaviours worth knowing:
+
+- The figure is computed once from history and applied to **every** night in the
+  plan. It does not simulate paying itself down as you follow the schedule, so
+  the whole window gets the same adjustment.
+- Because `sleep_need` comes from your *good* nights, the bar sits above a
+  typical night. If most of your nights fall short, the cap does the work rather
+  than the arithmetic — raise `MAX_DEBT_ADJUSTMENT_MINUTES` if you want the full
+  correction.
 
 ## Pages
 
