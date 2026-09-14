@@ -27,6 +27,8 @@ derives the recommendation from the nights you actually slept well instead.
   a bad fortnight can't suggest a 19:00 bedtime
 - 📅 **Calendar output** — `bedtime.ics` with "Go to bed" and "Wake up" events
   and alarms, ready for Google Calendar, Apple Calendar or Outlook
+- 🔔 **Stacked reminders** — set one lead time or several, so you get an hour's
+  warning and then a final nudge at fifteen minutes
 - 📊 **Streamlit app** — tonight's plan, how your sleep need was derived, the
   nights ahead, and how each past night landed
 - 🔌 **Pluggable wake times** — `WAKE_SOURCE` selects where wake times come from;
@@ -65,6 +67,24 @@ derives the recommendation from the nights you actually slept well instead.
    ```
 
 3. Edit `config.py`: set `OURA_TOKEN` and your wake times.
+
+### Reminders
+
+`BED_ALARM_MINUTES_BEFORE` and `WAKE_ALARM_MINUTES_BEFORE` accept several forms:
+
+```python
+BED_ALARM_MINUTES_BEFORE = (60, 15)    # two reminders: 1 hour, then 15 minutes
+BED_ALARM_MINUTES_BEFORE = 15          # a single reminder
+BED_ALARM_MINUTES_BEFORE = "60,15"     # comma-separated string
+BED_ALARM_MINUTES_BEFORE = None        # no alarm
+
+WAKE_ALARM_MINUTES_BEFORE = 0          # exactly at the wake time
+```
+
+Each lead time becomes its own `VALARM`, worded so stacked reminders aren't
+identical — "Bedtime in 1 hour", then "Bedtime in 15 min". Values are
+de-duplicated and ordered furthest-out first; anything unreadable is dropped
+with a warning rather than stopping the run.
 
 ### Wake times
 

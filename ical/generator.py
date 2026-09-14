@@ -60,15 +60,66 @@ def _is_plan_event(component) -> bool:
     return uid is not None and str(uid).startswith(PLAN_UID_PREFIX)
 
 
-def _alarm(minutes_before: Optional[int], text: str) -> Optional[Alarm]:
-    """Build a display alarm, or None when alarms are switched off."""
-    if minutes_before is None:
-        return None
-    alarm = Alarm()
-    alarm.add('action', 'DISPLAY')
-    alarm.add('description', text)
-    alarm.add('trigger', timedelta(minutes=-int(minutes_before)))
-    return alarm
+def parse_lead_times(spec, label: str) -> List[int]:
+    """Normalise an alarm setting into a list of minutes-before values.
+
+    Accepts a single number (``15``), several (``[15, 60]`` or ``(15, 60)``),
+    a comma-separated string (``"15,60"``), or None for no alarm at all.
+    Unusable entries are dropped with a warning rather than stopping the run.
+    Results are de-duplicated and ordered furthest-out first, so the reminders
+    read in the order they will actually fire.
+    """
+    if spec is None:
+        return []
+
+    if isinstance(spec, str):
+        items = [part for part in spec.replace(";", ",").split(",")]
+    elif isinstance(spec, (list, tuple, set)):
+        items = list(spec)
+    else:
+        items = [spec]
+
+    minutes = []
+    for item in items:
+        if item is None or (isinstance(item, str) and not item.strip()):
+            continue
+        try:
+            value = int(str(item).strip())
+        except (TypeError, ValueError):
+            print(f"⚠️  Ignoring unreadable {label} entry '{item}'.")
+            continue
+        if value < 0:
+            print(f"⚠️  Ignoring negative {label} entry '{item}'.")
+            continue
+        minutes.append(value)
+
+    return sorted(set(minutes), reverse=True)
+
+
+def _lead_text(minutes: int, event_text: str) -> str:
+    """Wording for one reminder, so stacked alarms aren't all identical."""
+    if minutes == 0:
+        return event_text
+    if minutes % 60 == 0:
+        hours = minutes // 60
+        ahead = f"{hours} hour" if hours == 1 else f"{hours} hours"
+    elif minutes > 60:
+        ahead = f"{minutes // 60}h {minutes % 60}m"
+    else:
+        ahead = f"{minutes} min"
+    return f"{event_text} in {ahead}"
+
+
+def _alarms(spec, event_text: str, label: str) -> List[Alarm]:
+    """Build one display alarm per configured lead time."""
+    alarms = []
+    for minutes in parse_lead_times(spec, label):
+        alarm = Alarm()
+        alarm.add('action', 'DISPLAY')
+        alarm.add('description', _lead_text(minutes, event_text))
+        alarm.add('trigger', timedelta(minutes=-minutes))
+        alarms.append(alarm)
+    return alarms
 
 
 def _describe(plan: BedtimePlan, profile: SleepProfile, wake_note: str) -> str:
@@ -105,7 +156,7 @@ def _build_event(
     start: datetime,
     end: datetime,
     description: str,
-    alarm: Optional[Alarm],
+    alarms: List[Alarm],
     now_utc: datetime,
 ) -> Event:
     event = Event()
@@ -118,7 +169,7 @@ def _build_event(
     event.add('summary', summary)
     event.add('description', description)
     event.add('transp', 'TRANSPARENT')
-    if alarm is not None:
+    for alarm in alarms:
         event.add_component(alarm)
     return event
 
@@ -129,9 +180,9 @@ def generate_bedtime_calendar(
     wake_schedule,
     existing_calendar: Calendar,
     bed_event_duration_minutes: int = 15,
-    bed_alarm_minutes_before: Optional[int] = 15,
+    bed_alarm_minutes_before=15,
     wake_event: bool = True,
-    wake_alarm_minutes_before: Optional[int] = 0,
+    wake_alarm_minutes_before=0,
 ) -> Calendar:
     """Merge freshly computed plans into an existing calendar.
 
@@ -173,7 +224,8 @@ def generate_bedtime_calendar(
             start=plan.bedtime,
             end=bed_end,
             description=description,
-            alarm=_alarm(bed_alarm_minutes_before, "Time to wind down for bed"),
+            alarms=_alarms(bed_alarm_minutes_before, "Bedtime",
+                           "BED_ALARM_MINUTES_BEFORE"),
             now_utc=now_utc,
         ))
         added += 1
@@ -185,7 +237,8 @@ def generate_bedtime_calendar(
                 start=plan.wake_time,
                 end=plan.wake_time + timedelta(minutes=15),
                 description=description,
-                alarm=_alarm(wake_alarm_minutes_before, "Time to get up"),
+                alarms=_alarms(wake_alarm_minutes_before, "Time to get up",
+                               "WAKE_ALARM_MINUTES_BEFORE"),
                 now_utc=now_utc,
             ))
             added += 1

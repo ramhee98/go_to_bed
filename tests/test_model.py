@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from model.bedtime import plan_night, sleep_debt_seconds, hhmm
 from model.sleep_need import build_profile, normalize_efficiency, SleepProfile
+from ical.generator import parse_lead_times, _lead_text
 from wake import build_wake_schedule
 from wake.fixed import FixedWakeSchedule
 
@@ -191,6 +192,32 @@ def test_malformed_override_falls_through_instead_of_crashing():
 def test_bad_wake_time_falls_back_without_crashing():
     schedule = FixedWakeSchedule("not a time", "08:00", "08:00", tz=TZ)
     assert schedule.wake_time_for(date(2026, 9, 14)).time() == time(6, 30)
+
+
+def test_alarm_spec_accepts_every_documented_form():
+    assert parse_lead_times(None, "X") == []
+    assert parse_lead_times(15, "X") == [15]            # single int, as before
+    assert parse_lead_times([15, 60], "X") == [60, 15]  # list
+    assert parse_lead_times((60, 15), "X") == [60, 15]  # tuple
+    assert parse_lead_times("15,60", "X") == [60, 15]   # comma string
+    assert parse_lead_times("60, 15", "X") == [60, 15]  # whitespace tolerated
+    assert parse_lead_times(0, "X") == [0]              # at the event itself
+
+
+def test_alarm_spec_orders_furthest_out_first_and_dedupes():
+    assert parse_lead_times([15, 60, 15], "X") == [60, 15]
+
+
+def test_alarm_spec_drops_junk_without_crashing():
+    assert parse_lead_times(["15", "soon", None, "", -5, 60], "X") == [60, 15]
+
+
+def test_alarm_text_names_its_lead_time():
+    assert _lead_text(0, "Time to get up") == "Time to get up"
+    assert _lead_text(15, "Bedtime") == "Bedtime in 15 min"
+    assert _lead_text(60, "Bedtime") == "Bedtime in 1 hour"
+    assert _lead_text(120, "Bedtime") == "Bedtime in 2 hours"
+    assert _lead_text(90, "Bedtime") == "Bedtime in 1h 30m"
 
 
 def test_hhmm_formatting():

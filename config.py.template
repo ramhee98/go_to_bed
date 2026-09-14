@@ -75,12 +75,15 @@ TIMEZONE = None
 # Length (in minutes) of the "Go to bed" event.
 BED_EVENT_DURATION_MINUTES = 15
 
-# Minutes before bedtime to fire the calendar alarm. Set to None for no alarm.
-BED_ALARM_MINUTES_BEFORE = 15
+# When to be reminded before bedtime, in minutes. Accepts a single number
+# (15), several (60, 15) for a stacked warning, or None for no alarm.
+# A comma-separated string ("60,15") works too.
+BED_ALARM_MINUTES_BEFORE = (60, 15)
 
 # Add a "Wake up" event as well. Set to False if your alarm clock already
 # covers that and you only want the bedtime nudge.
 WAKE_EVENT = True
 
-# Minutes before wake time to fire the wake alarm. Set to None for no alarm.
+# When to be reminded before wake time, in minutes. Same forms as above;
+# 0 means exactly at the wake time. None for no alarm.
 WAKE_ALARM_MINUTES_BEFORE = 0
