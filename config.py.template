@@ -98,6 +98,19 @@ BED_TIME_FRIDAY = None
 
 # --- Personal sleep need ----------------------------------------------------
 
+# Where your sleep need comes from.
+#   "computed" - the median time you actually slept on nights scoring
+#                GOOD_SLEEP_SCORE or better. Derived from your own history.
+#   "oura"     - the sleep need Oura itself reports. The v2 API does not
+#                publish it, so read it off the app and set
+#                OURA_SLEEP_NEED_HOURS below.
+SLEEP_NEED_SOURCE = "computed"
+
+# The sleep need Oura shows in the app, in hours: 7h16 is 7.267. Only used
+# when SLEEP_NEED_SOURCE = "oura". Efficiency and latency still come from your
+# own history either way.
+OURA_SLEEP_NEED_HOURS = None
+
 # How many days of Oura history to learn your personal sleep need from.
 # 60-90 days gives a stable estimate without dragging in an old season.
 HISTORY_DAYS = 90

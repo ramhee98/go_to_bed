@@ -49,10 +49,25 @@ def sync_config():
         importlib.reload(config)
 
 
+def sleep_need_override():
+    """Oura's own sleep need in seconds, or None to derive it from history."""
+    if str(setting("SLEEP_NEED_SOURCE", "computed")).strip().lower() != "oura":
+        return None
+    hours = setting("OURA_SLEEP_NEED_HOURS", None)
+    if not hours:
+        print("⚠️  SLEEP_NEED_SOURCE is 'oura' but OURA_SLEEP_NEED_HOURS is "
+              "unset; deriving the sleep need from your history instead.")
+        return None
+    return float(hours) * 3600
+
 def baseline_seconds():
     """The configured Oura baseline in seconds, or None to use the profile."""
     hours = setting("OURA_BASELINE_NEED_HOURS", None)
-    return float(hours) * 3600 if hours else None
+    if hours:
+        return float(hours) * 3600
+    # Not calibrated: the stated Oura need is a better guess than a need
+    # derived from this app's own definition of a good night.
+    return sleep_need_override()
 
 
 def calibrate(observed_minutes):
@@ -136,9 +151,14 @@ def main():
         good_sleep_score=setting("GOOD_SLEEP_SCORE", 80),
         min_good_nights=setting("MIN_GOOD_NIGHTS", 5),
         fallback_sleep_need_hours=setting("FALLBACK_SLEEP_NEED_HOURS", 8.0),
+        sleep_need_override=sleep_need_override(),
     )
-    print(f"  Sleep need: {hhmm(profile.sleep_need_seconds)} "
-          f"({profile.source}, from {profile.good_nights}/{profile.nights_analyzed} nights)")
+    if profile.source == "oura":
+        origin = "from Oura, not derived"
+    else:
+        origin = (f"{profile.source}, from {profile.good_nights}"
+                  f"/{profile.nights_analyzed} nights")
+    print(f"  Sleep need: {hhmm(profile.sleep_need_seconds)} ({origin})")
     print(f"  Efficiency: {profile.efficiency * 100:.0f}% "
           f"→ {hhmm(profile.time_in_bed_seconds)} in bed")
     for note in profile.notes:

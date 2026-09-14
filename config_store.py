@@ -115,6 +115,14 @@ SETTINGS: List[Field] = [
     Field("BED_TIME_THURSDAY", "Thursday night override", "opt_time", section="Bedtimes"),
     Field("BED_TIME_FRIDAY", "Friday night override", "opt_time", section="Bedtimes"),
 
+    Field("SLEEP_NEED_SOURCE", "Sleep need source", "choice", section="Sleep need",
+          choices=["computed", "oura"], default="computed",
+          help="'computed' takes the median of your good nights. 'oura' uses "
+               "the figure the Oura app shows, set below."),
+    Field("OURA_SLEEP_NEED_HOURS", "Oura sleep need (hours)", "opt_float",
+          section="Sleep need", minimum=1.0, maximum=14.0,
+          help="The need Oura displays, in hours: 7h16 is 7.267. The v2 API "
+               "does not publish it, so it has to be typed in."),
     Field("HISTORY_DAYS", "History window (days)", "int", section="Sleep need",
           help="How much Oura history to learn from. 60–90 is usually stable.",
           default=90, minimum=7, maximum=365),
@@ -132,8 +140,8 @@ SETTINGS: List[Field] = [
           help="'oura' uses Oura's own decay-weighted formula. 'computed' "
                "sums only shortfalls and reads higher. 'oura_balance' scales "
                "by the readiness score. 'none' disables the adjustment."),
-    Field("OURA_BASELINE_NEED_HOURS", "Oura sleep need (hours)", "opt_text",
-          section="Sleep debt",
+    Field("OURA_BASELINE_NEED_HOURS", "Debt baseline (hours)", "opt_float",
+          section="Sleep debt", minimum=1.0, maximum=14.0,
           help="The sleep need Oura measures against, e.g. 7.21. Blank uses "
                "your computed need. Run 'python3 main.py --calibrate-debt "
                "10,20,30' with figures from the Oura app to find it."),
@@ -229,6 +237,20 @@ def coerce(field: Field, raw) -> Any:
     if field.kind == "opt_text":
         text = str(raw or "").strip()
         return text or None
+
+    if field.kind == "opt_float":
+        text = str(raw if raw is not None else "").strip()
+        if not text:
+            return None
+        try:
+            number = float(text)
+        except ValueError:
+            raise ValidationError(f"{label}: '{text}' is not a number.")
+        if field.minimum is not None and number < field.minimum:
+            raise ValidationError(f"{label}: must be at least {field.minimum}.")
+        if field.maximum is not None and number > field.maximum:
+            raise ValidationError(f"{label}: must be at most {field.maximum}.")
+        return number
 
     if field.kind == "lines":
         if isinstance(raw, (list, tuple)):

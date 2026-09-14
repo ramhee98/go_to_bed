@@ -260,10 +260,21 @@ python3 tests/test_model.py     # or: pytest
 
 ## How the bedtime is calculated
 
-1. **Sleep need** — the median time asleep on nights scoring `GOOD_SLEEP_SCORE`
-   or better. Naps are excluded; only Oura's `long_sleep` counts. If fewer than
-   `MIN_GOOD_NIGHTS` clear that bar, your own top quartile is used instead, and
-   only if that still isn't enough does `FALLBACK_SLEEP_NEED_HOURS` apply.
+1. **Sleep need** — `SLEEP_NEED_SOURCE` picks where it comes from:
+
+   * `"computed"` (default) — the median time asleep on nights scoring
+     `GOOD_SLEEP_SCORE` or better. Naps are excluded; only Oura's `long_sleep`
+     counts. If fewer than `MIN_GOOD_NIGHTS` clear that bar, your own top
+     quartile is used instead, and only if that still isn't enough does
+     `FALLBACK_SLEEP_NEED_HOURS` apply.
+   * `"oura"` — the need Oura itself reports, set in `OURA_SLEEP_NEED_HOURS`
+     (7h16 is `7.267`). **The v2 API does not publish it**, so read it off the
+     app. Efficiency and latency still come from your own history; only the
+     need is substituted.
+
+   The two can differ enough to matter: on the account this was built against,
+   computed gives 7:29 where Oura says 7:16, a 13-minute gap that moves every
+   bedtime.
 2. **Time in bed** — sleep need ÷ median efficiency.
    Skipped entirely when `BED_SOURCE = "fixed"`.
 3. **Sleep debt** — shortfalls (never surpluses) over `DEBT_WINDOW_DAYS`, divided

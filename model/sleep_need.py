@@ -134,6 +134,7 @@ def build_profile(
     good_sleep_score: int = 80,
     min_good_nights: int = 5,
     fallback_sleep_need_hours: float = 8.0,
+    sleep_need_override: Optional[float] = None,
 ) -> SleepProfile:
     """Build a personal sleep profile from Oura history.
 
@@ -141,9 +142,27 @@ def build_profile(
     at least `good_sleep_score`. If too few nights clear that bar, the bar is
     lowered to the top quartile of the scores you do have, and only if that
     still isn't enough does it fall back to the configured default.
+
+    `sleep_need_override` (seconds) replaces that derivation — used to adopt
+    the sleep need Oura itself reports, which the v2 API does not publish but
+    the app displays. Efficiency and latency still come from your history, so
+    only the need itself is substituted.
     """
     nights = collect_nights(sessions, daily_sleep)
     notes = []
+
+    if sleep_need_override is not None:
+        efficiency = _median_of(nights, "efficiency") or 0.90
+        latency = _median_of(nights, "latency_seconds") or 0.0
+        return SleepProfile(
+            sleep_need_seconds=sleep_need_override,
+            efficiency=efficiency,
+            latency_seconds=latency,
+            nights_analyzed=len(nights),
+            good_nights=0,
+            source="oura",
+            notes=["Sleep need taken from Oura, not derived from your nights."],
+        )
 
     scored = [n for n in nights if n.get("score") is not None]
     good = [n for n in scored if n["score"] >= good_sleep_score]

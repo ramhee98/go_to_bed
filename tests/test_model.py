@@ -128,6 +128,27 @@ def test_naps_do_not_count_towards_sleep_need():
     assert profile.sleep_need_seconds == 8 * 3600
 
 
+def test_sleep_need_can_be_taken_from_oura():
+    # Oura does not publish its sleep need, so it is typed in. Efficiency and
+    # latency must still come from the user's own history.
+    sessions = [_night(f"2026-09-{d:02d}", 8.0, efficiency=91) for d in range(1, 11)]
+    daily = [{"day": n["day"], "score": 85} for n in sessions]
+    profile = build_profile(sessions, daily, sleep_need_override=7.267 * 3600)
+    assert profile.sleep_need_seconds == 7.267 * 3600
+    assert profile.source == "oura"
+    assert profile.efficiency == 0.91
+    assert profile.latency_seconds == 600
+    assert profile.nights_analyzed == 10
+
+
+def test_oura_sleep_need_changes_the_time_in_bed_target():
+    sessions = [_night(f"2026-09-{d:02d}", 8.0) for d in range(1, 11)]
+    daily = [{"day": n["day"], "score": 85} for n in sessions]
+    computed = build_profile(sessions, daily)
+    from_oura = build_profile(sessions, daily, sleep_need_override=7.0 * 3600)
+    assert from_oura.time_in_bed_seconds < computed.time_in_bed_seconds
+
+
 def test_thin_history_falls_back_to_configured_need():
     sessions = [_night("2026-09-10", 6.0, score=40)]
     daily = [{"day": "2026-09-10", "score": 40}]

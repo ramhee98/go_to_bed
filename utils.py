@@ -53,6 +53,17 @@ def setting(name, default):
     return getattr(config, name, default)
 
 
+def sleep_need_override():
+    """Oura's own sleep need in seconds, or None to derive it from history."""
+    if str(setting("SLEEP_NEED_SOURCE", "computed")).strip().lower() != "oura":
+        return None
+    hours = setting("OURA_SLEEP_NEED_HOURS", None)
+    if not hours:
+        print("⚠️  SLEEP_NEED_SOURCE is 'oura' but OURA_SLEEP_NEED_HOURS is "
+              "unset; deriving the sleep need from your history instead.")
+        return None
+    return float(hours) * 3600
+
 def theme() -> dict:
     """Chart tokens for the viewer's current Streamlit theme."""
     base = "light"
@@ -144,6 +155,7 @@ def load_state(history_days=None):
         good_sleep_score=setting("GOOD_SLEEP_SCORE", 80),
         min_good_nights=setting("MIN_GOOD_NIGHTS", 5),
         fallback_sleep_need_hours=setting("FALLBACK_SLEEP_NEED_HOURS", 8.0),
+        sleep_need_override=sleep_need_override(),
     )
 
     # Every argument main.py passes must be passed here too, or the app and
@@ -155,7 +167,8 @@ def load_state(history_days=None):
         window_days=setting("DEBT_WINDOW_DAYS", 14),
         recovery_nights=setting("DEBT_RECOVERY_NIGHTS", 7),
         max_adjustment_minutes=setting("MAX_DEBT_ADJUSTMENT_MINUTES", 45),
-        baseline_seconds=float(baseline_hours) * 3600 if baseline_hours else None,
+        baseline_seconds=(float(baseline_hours) * 3600 if baseline_hours
+                          else sleep_need_override()),
         include_naps=setting("OURA_DEBT_INCLUDE_NAPS", False),
     )
 
@@ -211,9 +224,12 @@ def sidebar(state):
             f"Sleep need **{hhmm(profile.sleep_need_seconds)}** · "
             f"efficiency **{profile.efficiency * 100:.0f}%**"
         )
-        st.caption(
-            f"Learned from {profile.good_nights} good nights "
-            f"of {profile.nights_analyzed} analysed."
-        )
+        if profile.source == "oura":
+            st.caption("Sleep need taken from Oura, not derived from your nights.")
+        else:
+            st.caption(
+                f"Learned from {profile.good_nights} good nights "
+                f"of {profile.nights_analyzed} analysed."
+            )
         if profile.source == "fallback":
             st.warning("Using the configured fallback sleep need.")

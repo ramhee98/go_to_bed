@@ -69,6 +69,11 @@ def widget(field, value):
                             placeholder=field.placeholder or None,
                             help=help_text, key=key)
 
+    if field.kind == "opt_float":
+        return st.text_input(label, value=("" if value is None else str(value)),
+                             placeholder=field.placeholder or "blank = unset",
+                             help=help_text, key=key)
+
     if field.kind == "minutes":
         if value is None:
             shown = ""

@@ -348,7 +348,8 @@ def oura_debt_assessment(
               "and will not match the Oura app. Run "
               "'python3 main.py --calibrate-debt <minutes>' to find it.")
 
-    used = baseline_seconds if baseline_seconds is not None else profile.sleep_need_seconds
+    used = (baseline_seconds if baseline_seconds is not None
+            else (profile.sleep_need_seconds if profile is not None else 0.0))
     reasons.append(f"Decay-weighted over {window_days} days against a "
                    f"{hhmm(used)} baseline"
                    + (" (from OURA_BASELINE_NEED_HOURS)" if baseline_seconds

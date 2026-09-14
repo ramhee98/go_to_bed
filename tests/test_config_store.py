@@ -108,6 +108,33 @@ def test_brackets_in_strings_and_comments_do_not_confuse_the_scanner():
     assert _bracket_delta("]\n") == -1
 
 
+def test_numeric_settings_are_not_written_as_strings():
+    # These were declared as free text once, so the Settings page wrote
+    # OURA_BASELINE_NEED_HOURS = "7.217" — a quoted string in a file that is
+    # imported as Python.
+    for key in ("OURA_BASELINE_NEED_HOURS", "OURA_SLEEP_NEED_HOURS"):
+        field = _field(key)
+        assert field.kind == "opt_float", key
+        assert serialize(coerce(field, "7.217")) == "7.217"
+        assert coerce(field, "") is None
+
+
+def test_optional_float_rejects_nonsense_and_bounds():
+    field = _field("OURA_SLEEP_NEED_HOURS")
+    for bad in ("seven", "7,2"):
+        try:
+            coerce(field, bad)
+            raise AssertionError(f"{bad!r} should have been rejected")
+        except ValidationError:
+            pass
+    for out_of_range in (0.5, 20.0):
+        try:
+            coerce(field, out_of_range)
+            raise AssertionError(f"{out_of_range} should have been rejected")
+        except ValidationError:
+            pass
+
+
 def test_write_refuses_the_token():
     path = _sample()
     try:
