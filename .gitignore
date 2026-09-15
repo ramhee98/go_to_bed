@@ -28,3 +28,6 @@ bedtime.ics
 # OS
 .DS_Store
 Thumbs.db
+
+# Cached Oura responses
+.cache/

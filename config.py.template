@@ -178,6 +178,28 @@ MAX_DEBT_ADJUSTMENT_MINUTES = 45
 EARLIEST_BEDTIME = "21:00"
 LATEST_BEDTIME = "01:00"
 
+# --- Caching ----------------------------------------------------------------
+
+# Cache Oura API responses on disk. Both `python3 main.py` and the app read
+# through the same cache, so a cron run and a page load minutes apart cost one
+# API call rather than two. Yesterday's nights don't change; today's data is
+# only as fresh as CACHE_TTL_MINUTES below.
+CACHE_ENABLED = True
+
+# How long a cached response counts as fresh, in minutes. Oura syncs when the
+# ring is near your phone, so anything under an hour mostly re-fetches data
+# that hasn't changed. 0 disables reuse without deleting the cache.
+CACHE_TTL_MINUTES = 60
+
+# Where cached responses are written. One small .json per endpoint; the token
+# is never stored, only a short hash of it so two accounts can't collide.
+CACHE_DIR = "./.cache/oura"
+
+# When the API call fails, fall back to the cached response even if it is past
+# its TTL. Yesterday's numbers beat no calendar at all on a flaky connection —
+# the run says so in its output when this happens.
+CACHE_SERVE_STALE_ON_ERROR = True
+
 # --- Maintenance ------------------------------------------------------------
 
 # On each run, add any setting this file is missing that config.py.template

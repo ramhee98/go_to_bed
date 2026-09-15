@@ -163,6 +163,24 @@ SETTINGS: List[Field] = [
           help="Never recommend a bedtime after this. May be after midnight.",
           default="01:00"),
 
+    Field("CACHE_ENABLED", "Cache Oura responses", "bool", section="Caching",
+          help="The CLI and this app share one on-disk cache, so a cron run "
+               "and a page load minutes apart cost a single API call.",
+          default=True),
+    Field("CACHE_TTL_MINUTES", "Cache lifetime (minutes)", "int",
+          section="Caching",
+          help="How long a cached response counts as fresh. 0 re-fetches every "
+               "time without deleting the cache.",
+          default=60, minimum=0, maximum=10080),
+    Field("CACHE_DIR", "Cache directory", "text", section="Caching",
+          help="One small .json per endpoint. The token is never stored there.",
+          default="./.cache/oura"),
+    Field("CACHE_SERVE_STALE_ON_ERROR", "Use stale cache when the API fails",
+          "bool", section="Caching",
+          help="On a failed call, fall back to the cached response even if it "
+               "is past its lifetime. Yesterday's numbers beat no calendar.",
+          default=True),
+
     Field("BED_EVENT_DURATION_MINUTES", "Bedtime event length (minutes)", "int",
           section="Reminders", default=15, minimum=1, maximum=240),
     Field("BED_ALARM_MINUTES_BEFORE", "Bedtime reminders", "minutes",

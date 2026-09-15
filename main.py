@@ -6,6 +6,7 @@ import config
 from config import OURA_TOKEN, ICAL_OUTPUT_PATH
 from config_store import sync_with_template
 
+from oura_api import cache as oura_cache
 from oura_api.client import (fetch_sleep_data, fetch_daily_sleep,
                               fetch_daily_readiness)
 from model.sleep_need import build_profile
@@ -70,14 +71,16 @@ def baseline_seconds():
     return sleep_need_override()
 
 
-def calibrate(observed_minutes):
+def calibrate(observed_minutes, use_cache=True):
     """Recover the baseline need that reproduces a debt seen in the Oura app."""
     history_days = setting("HISTORY_DAYS", 90)
     include_naps = setting("OURA_DEBT_INCLUDE_NAPS", False)
 
     print(f"Fetching sleep history for the past {history_days} days...")
-    sessions = fetch_sleep_data(OURA_TOKEN, days_back=history_days)
-    daily_sleep = fetch_daily_sleep(OURA_TOKEN, days_back=history_days)
+    sessions = fetch_sleep_data(OURA_TOKEN, days_back=history_days,
+                                use_cache=use_cache)
+    daily_sleep = fetch_daily_sleep(OURA_TOKEN, days_back=history_days,
+                                    use_cache=use_cache)
 
     if not sessions:
         print("No sleep data found.")
@@ -127,17 +130,20 @@ def calibrate(observed_minutes):
     print(f"      OURA_BASELINE_NEED_HOURS = {found / 3600:.3f}")
 
 
-def main():
+def main(use_cache=True):
     sync_config()
 
     history_days = setting("HISTORY_DAYS", 90)
 
     print(f"Fetching sleep history for the past {history_days} days...")
-    sessions = fetch_sleep_data(OURA_TOKEN, days_back=history_days)
-    daily_sleep = fetch_daily_sleep(OURA_TOKEN, days_back=history_days)
+    sessions = fetch_sleep_data(OURA_TOKEN, days_back=history_days,
+                                use_cache=use_cache)
+    daily_sleep = fetch_daily_sleep(OURA_TOKEN, days_back=history_days,
+                                    use_cache=use_cache)
 
     debt_source = str(setting("DEBT_SOURCE", "computed")).strip().lower()
-    readiness = (fetch_daily_readiness(OURA_TOKEN, days_back=30)
+    readiness = (fetch_daily_readiness(OURA_TOKEN, days_back=30,
+                                       use_cache=use_cache)
                  if debt_source == "oura" else [])
 
     if not sessions:
@@ -239,9 +245,21 @@ if __name__ == "__main__":
              "shows. Give today's figure, or several comma-separated starting "
              "with today (e.g. 10,20,30) for a steadier fit. Exits without "
              "writing the calendar.")
+    parser.add_argument(
+        "--no-cache", action="store_true",
+        help="Ignore cached Oura responses and call the API. The fresh "
+             "responses still refresh the cache for the next run.")
+    parser.add_argument(
+        "--clear-cache", action="store_true",
+        help="Delete every cached Oura response, then exit.")
     args = parser.parse_args()
 
-    if args.calibrate_debt is not None:
+    if args.clear_cache:
+        sync_config()
+        removed = oura_cache.clear()
+        print(f"Cleared {removed} cached response(s) from "
+              f"{oura_cache.directory()}.")
+    elif args.calibrate_debt is not None:
         sync_config()
         try:
             observed = [float(part) for part in args.calibrate_debt.split(",")
@@ -249,6 +267,6 @@ if __name__ == "__main__":
         except ValueError:
             parser.error("--calibrate-debt takes numbers of minutes, "
                          "e.g. 10 or 10,20,30")
-        calibrate(observed)
+        calibrate(observed, use_cache=not args.no_cache)
     else:
-        main()
+        main(use_cache=not args.no_cache)

@@ -15,6 +15,7 @@ from ical.generator import resolve_timezone
 from model.bedtime import hhmm, plan_nights
 from model import debt as debt_model
 from model.sleep_need import build_profile, collect_nights
+from oura_api import cache as oura_cache
 from oura_api.client import (fetch_daily_readiness, fetch_daily_sleep,
                              fetch_sleep_data)
 from wake import build_wake_schedule
@@ -109,9 +110,26 @@ def style_axes(chart, tokens: dict):
     )
 
 
-@st.cache_data(ttl=3600, show_spinner="Fetching your Oura history...")
+def ui_cache_ttl() -> int:
+    """Seconds the in-process cache keeps Oura data, from CACHE_TTL_MINUTES.
+
+    Streamlit fixes a TTL when the decorator runs, so this is read once at
+    import and a changed lifetime applies from the next restart. The on-disk
+    cache underneath reads the setting on every call, so the two never drift
+    further apart than one restart.
+    """
+    if not setting("CACHE_ENABLED", True):
+        return 0
+    try:
+        minutes = float(setting("CACHE_TTL_MINUTES", 60))
+    except (TypeError, ValueError):
+        minutes = 60
+    return int(max(0.0, minutes) * 60)
+
+
+@st.cache_data(ttl=ui_cache_ttl(), show_spinner="Fetching your Oura history...")
 def load_oura(history_days: int):
-    """Fetch sleep sessions and daily scores, cached for an hour."""
+    """Fetch sleep sessions and daily scores, through the configured cache."""
     token = setting("OURA_TOKEN", "")
     sessions = fetch_sleep_data(token, days_back=history_days)
     daily = fetch_daily_sleep(token, days_back=history_days)
@@ -216,6 +234,9 @@ def sidebar(state):
     with st.sidebar:
         st.markdown("### go_to_bed")
         if st.button("🔄 Refresh data", width="stretch"):
+            # Both layers, or the disk cache would just hand the
+            # same rows straight back and the button would do nothing.
+            oura_cache.clear()
             load_oura.clear()
             st.rerun()
 

@@ -43,6 +43,8 @@ derives the recommendation from the nights you actually slept well instead.
 - 🔁 **Self-updating config** — a run adds any setting `config.py.template` has
   that your `config.py` lacks, with its comment and in the right section. Your
   values are never touched, so upgrading is just `git pull`
+- 📦 **Cached API responses** — the CLI and the app share one on-disk cache,
+  so a cron run and a page load minutes apart cost a single Oura call
 - Degrades gracefully: API errors print a message and return empty rather than
   raising, and a thin history falls back to a configured default
 
@@ -252,6 +254,13 @@ Explore the reasoning:
 streamlit run app.py
 ```
 
+Work with the cache:
+
+```bash
+python3 main.py --no-cache      # ignore cached responses, call the API
+python3 main.py --clear-cache   # delete every cached response, then exit
+```
+
 Run the tests:
 
 ```bash
@@ -432,6 +441,34 @@ The `.bak` is written only when something is actually added, so ordinary runs
 don't churn. Set `AUTO_ADD_MISSING_SETTINGS = False` to manage `config.py`
 entirely by hand; a missing or unreadable template is a no-op either way, so the
 sync can never block a run.
+
+## Caching
+
+Oura responses are cached on disk so the calendar run and the app don't each
+pull the same 90 days. Yesterday's nights don't change, and the ring only syncs
+when it's near your phone, so re-fetching every few minutes buys nothing.
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `CACHE_ENABLED` | `True` | Turns the cache off entirely when `False` |
+| `CACHE_TTL_MINUTES` | `60` | How long a response counts as fresh. `0` re-fetches every time without deleting anything |
+| `CACHE_DIR` | `./.cache/oura` | Where the entries live |
+| `CACHE_SERVE_STALE_ON_ERROR` | `True` | On a failed call, use the cached response even past its lifetime |
+
+One `.json` per endpoint, written `0600`. Your token is never stored — only a
+short hash of it, so pointing the app at a second account can't serve the first
+account's nights back. The history window is part of the key too, so changing
+`HISTORY_DAYS` re-fetches rather than reusing the wrong range.
+
+When a call fails, a complete cached response is preferred over the partial one
+the failure produced, and the run says so in its output. A failed call never
+overwrites a good entry.
+
+**Refresh data** in the app's sidebar clears both layers — the disk cache and
+Streamlit's in-process one — so the button always means what it says.
+`CACHE_TTL_MINUTES` applies to the app's in-process cache too, but Streamlit
+fixes that when the process starts, so a changed lifetime takes effect on the
+next app restart.
 
 ## Pages
 
