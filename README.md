@@ -229,15 +229,22 @@ python3 main.py
 
 ```
 Fetching sleep history for the past 90 days...
+📦 Using cached sleep (6m ago, 114 record(s)).
+📦 Using cached daily_sleep (6m ago, 87 record(s)).
+📦 Using cached daily_readiness (6m ago, 31 record(s)).
 Learning your personal sleep need...
-  Sleep need: 7:29 (personal, from 34/80 nights)
-  Efficiency: 94% → 7:58 in bed
-  Sleep debt: 7:46 over the last 14 days
+  Sleep need: 7:13 (from Oura, not derived)
+  Efficiency: 93% → 7:45 in bed
+  Oura sleep debt 0:30 spread over 7 nights → 0:04 earlier.
+  Decay-weighted over 14 days against a 7:13 baseline; nights only.
+  Oura sleep balance: 93/100.
 Planning the next 14 nights...
 
-  🛏️  Tonight: bed at 21:46, up at 06:30 (8:44 in bed)
+  🛏️  Tonight: bed at 22:30, up at 06:20 (7:50 in bed)
 
 Loading existing calendar...
+Loaded existing calendar with 30 events.
+Kept 2 existing event(s) outside the planning window.
 Added 28 planned event(s) for 14 night(s).
 Saving calendar to ./bedtime.ics...
 Done.
@@ -298,9 +305,9 @@ python3 tests/test_model.py     # or: pytest
 
 | Source | Basis | Tonight, on the account this was built against |
 |---|---|---|
-| `"oura"` (default) | Oura's own decay-weighted formula | debt 0:10 → 1m earlier |
-| `"computed"` | Only your shortfalls, undecayed | debt 7:46 → capped at 60m earlier |
-| `"oura_balance"` | Oura's `sleep_balance` readiness contributor | balance 86/100 → 8m earlier |
+| `"oura"` (default) | Oura's own decay-weighted formula | debt 0:30 → 4m earlier |
+| `"computed"` | Only your shortfalls, undecayed | debt 5:50 → 50m earlier |
+| `"oura_balance"` | Oura's `sleep_balance` readiness contributor | balance 93/100 → 4m earlier |
 | `"none"` | No adjustment at all | — |
 
 #### The Oura formula
@@ -381,13 +388,13 @@ its sleep need drifts by a minute or two day to day, and the amplification turns
 either into a visible difference.
 
 The Oura app shows a sleep debt in minutes, but **no v2 endpoint exposes that
-number** — it is computed in the app. So when `DEBT_SOURCE = "oura"` the
-shortfall tally is still computed here and shown beside the score, giving you a
-duration to read even though the adjustment comes from the balance:
+number** — it is computed in the app. So when `DEBT_SOURCE = "oura_balance"`
+the shortfall tally is still computed here and shown beside the score, giving
+you a duration to read even though the adjustment comes from the balance:
 
 ```
-Sleep debt  7:46
-Oura balance 86/100 → -0:08
+Sleep debt  5:50
+Oura balance 93/100 → -0:04
 ```
 
 #### The computed source
@@ -472,6 +479,11 @@ next app restart.
 
 ## Pages
 
+The screenshots below are the dark theme. The app follows whichever theme
+Streamlit is set to — the chart palettes are defined for both, so nothing
+washes out either way. Force one with `streamlit run app.py --theme.base dark`,
+or set it once in `.streamlit/config.toml`.
+
 ### Sleep need
 
 How much sleep you need, and the nights that show it. The dose-response curve
@@ -489,6 +501,10 @@ a glance, plus a download for the `.ics`.
 ### History
 
 How each night landed against your sleep need, and where the debt came from.
+The window selector covers the last 14 nights, the last 30, or everything you
+have; options longer than your history are hidden rather than shown empty. The
+**Sleep debt** metric is the exception — it stays on `DEBT_WINDOW_DAYS`,
+because that is the figure actually driving tonight's bedtime.
 
 ![History](img/history.png)
 
