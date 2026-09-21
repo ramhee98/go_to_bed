@@ -13,11 +13,15 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from model.debt import (
     OURA_DECAY,
     DebtAssessment,
+    DurationError,
     assess,
+    calibrate_baseline,
+    calibrate_baseline_for_days,
     computed_assessment,
     latest_sleep_balance,
     oura_assessment,
     oura_debt_seconds,
+    parse_duration_minutes,
 )
 from model.sleep_need import SleepProfile
 
@@ -269,6 +273,99 @@ def test_dispatch_selects_oura_balance():
 def test_display_falls_back_gracefully():
     assert DebtAssessment(0.0, "none").display == "0:00"
     assert DebtAssessment(0.0, "computed", debt_seconds=3600).display == "1:00"
+
+
+# -- reading a duration off the app ------------------------------------------
+
+def test_parse_duration_accepts_the_forms_people_copy():
+    assert parse_duration_minutes("3:30") == 210
+    assert parse_duration_minutes("3h30m") == 210
+    assert parse_duration_minutes("3h 30") == 210
+    assert parse_duration_minutes("3h") == 180
+    assert parse_duration_minutes("45m") == 45
+    assert parse_duration_minutes("210") == 210
+    assert parse_duration_minutes("7:16") == 436
+
+
+def test_parse_duration_treats_blank_as_unset():
+    for blank in (None, "", "   "):
+        assert parse_duration_minutes(blank) is None
+
+
+def test_parse_duration_rejects_nonsense_rather_than_guessing():
+    # A typo must be reported, not silently read as zero debt, which would
+    # quietly pin the baseline to whatever the other rows happen to say.
+    for bad in ("3:70", "abc", "1:2:3", "-5"):
+        try:
+            parse_duration_minutes(bad)
+        except DurationError:
+            continue
+        raise AssertionError(f"{bad!r} should not have parsed")
+
+
+# -- calibration -------------------------------------------------------------
+
+def _fortnight(hours, end=date(2026, 9, 21)):
+    """Fourteen identical nights ending on `end`."""
+    sessions = [_night(str(end - timedelta(days=n)), hours) for n in range(14)]
+    daily = [{"day": s["day"], "score": 85} for s in sessions]
+    return sessions, daily
+
+
+def test_calibration_recovers_the_baseline_it_was_given():
+    # Sleeping 6h against a 7h need, every night, for a fortnight.
+    sessions, daily = _fortnight(6.0)
+    today = date(2026, 9, 21)
+    debt = oura_debt_seconds(sessions, daily, None, today=today,
+                             baseline_seconds=7 * 3600)
+    found = calibrate_baseline_for_days(sessions, daily,
+                                        {today: debt / 60})
+    assert found is not None
+    assert abs(found - 7 * 3600) < 60, found
+
+
+def test_calibration_by_date_matches_the_positional_form():
+    # The CLI passes a list where position means days ago; the page passes
+    # dates. They must agree, or the two would recommend different baselines.
+    sessions, daily = _fortnight(6.0)
+    today = date(2026, 9, 21)
+    positional = calibrate_baseline(sessions, daily, [200, 190, 180],
+                                    today=today)
+    by_date = calibrate_baseline_for_days(sessions, daily, {
+        today: 200,
+        today - timedelta(days=1): 190,
+        today - timedelta(days=2): 180,
+    })
+    assert abs(positional - by_date) < 1e-6
+
+
+def test_calibration_accepts_days_with_gaps():
+    # The positional form cannot express "today and five days ago" at all.
+    sessions, daily = _fortnight(6.0)
+    today = date(2026, 9, 21)
+    found = calibrate_baseline_for_days(sessions, daily, {
+        today: 200,
+        today - timedelta(days=5): 180,
+    })
+    assert found is not None
+
+
+def test_calibration_ignores_a_zero_observation():
+    # A debt of zero is satisfied by any low enough baseline, so it pins
+    # nothing and must not drag the average down.
+    sessions, daily = _fortnight(6.0)
+    today = date(2026, 9, 21)
+    both = calibrate_baseline_for_days(sessions, daily,
+                                       {today: 200, today - timedelta(days=1): 0})
+    only = calibrate_baseline_for_days(sessions, daily, {today: 200})
+    assert abs(both - only) < 1e-6
+
+
+def test_calibration_returns_none_when_nothing_pins_it():
+    sessions, daily = _fortnight(6.0)
+    assert calibrate_baseline_for_days(sessions, daily, {}) is None
+    assert calibrate_baseline_for_days(sessions, daily,
+                                       {date(2026, 9, 21): 0}) is None
 
 
 if __name__ == "__main__":

@@ -13,6 +13,7 @@ API gives hours owed. `sleep_balance` is a 0-100 score, so mapping it to minutes
 of earlier bedtime is this app's interpretation, not a figure from Oura.
 """
 
+import re
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
@@ -207,16 +208,44 @@ def calibrate_baseline(
     instance, is satisfied by any sufficiently low baseline and so pins nothing.
     """
     today = today or date.today()
-    slept = _slept_by_day(sessions, daily_sleep, include_naps)
 
     if not isinstance(observed_minutes, (list, tuple)):
         observed_minutes = [observed_minutes]
 
+    observations = {today - timedelta(days=days_ago): observed
+                    for days_ago, observed in enumerate(observed_minutes)}
+    return calibrate_baseline_for_days(
+        sessions, daily_sleep, observations,
+        window_days=window_days, include_naps=include_naps)
+
+
+def calibrate_baseline_for_days(
+    sessions: List[Dict],
+    daily_sleep: List[Dict],
+    observations: Dict[date, float],
+    window_days: int = OURA_WINDOW_DAYS,
+    include_naps: bool = False,
+) -> Optional[float]:
+    """Solve for the baseline need, given debt figures on specific days.
+
+    `observations` maps a day to the debt in minutes the Oura app showed on it.
+    Unlike the positional form, the days need not be consecutive — the app only
+    keeps a fortnight of history on screen, so the figures you can actually read
+    off it usually have gaps.
+
+    Each observation is inverted independently and the estimates averaged. The
+    answer is roughly nine times as sensitive as the baseline itself, so one day
+    pins it poorly; three or four spread across the window pin it well.
+
+    Returns seconds, or None when nothing can be solved — an observed zero is
+    satisfied by any sufficiently low baseline and so pins nothing.
+    """
+    slept = _slept_by_day(sessions, daily_sleep, include_naps)
+
     estimates = []
-    for days_ago, observed in enumerate(observed_minutes):
+    for anchor, observed in observations.items():
         if observed is None or observed <= 0:
             continue
-        anchor = today - timedelta(days=days_ago)
 
         weight_sum = 0.0
         weighted_sleep = 0.0
@@ -234,6 +263,42 @@ def calibrate_baseline(
         estimates.append((observed * 60 + weighted_sleep) / weight_sum)
 
     return sum(estimates) / len(estimates) if estimates else None
+
+
+class DurationError(ValueError):
+    """A duration that could not be read."""
+
+
+def parse_duration_minutes(text) -> Optional[float]:
+    """Read a duration the way the Oura app prints one, returning minutes.
+
+    Accepts "3:30", "3h30m", "3h 30", "3h", "45m" and a bare "210" (minutes),
+    because those are the forms people actually copy off the screen. Returns
+    None for blank input; raises DurationError for anything unreadable, so a
+    typo is reported rather than silently treated as zero.
+    """
+    if text is None:
+        return None
+    cleaned = re.sub(r"\s+", "", str(text)).lower()
+    if not cleaned:
+        return None
+
+    match = re.fullmatch(r"(\d+)[:h](\d{1,2})m?", cleaned)
+    if match:
+        hours, minutes = int(match.group(1)), int(match.group(2))
+        if minutes >= 60:
+            raise DurationError(f"'{text}': {minutes} is not a number of minutes.")
+        return hours * 60 + minutes
+
+    match = re.fullmatch(r"(\d+(?:\.\d+)?)h", cleaned)
+    if match:
+        return float(match.group(1)) * 60
+
+    match = re.fullmatch(r"(\d+(?:\.\d+)?)m?", cleaned)
+    if match:
+        return float(match.group(1))
+
+    raise DurationError(f"'{text}': expected something like 3:30, 3h30m or 210.")
 
 
 def latest_sleep_balance(readiness: List[Dict]) -> Optional[int]:

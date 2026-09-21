@@ -36,6 +36,10 @@ derives the recommendation from the nights you actually slept well instead.
   nights ahead, and how each past night landed
 - ⚙️ **Settings page** — edit every setting from the browser and write it back to
   `config.py`, comments intact. The Oura token is never shown or written there
+- 🎯 **Recalibration in the browser** — type a few days' sleep debt as the Oura
+  app shows them, see which baseline reproduces them and how closely, and save
+  it in one click. The baseline drifts, so this is a recurring chore, not a
+  one-off
 - 📆 **Calendar-aware** — point it at one or more `.ics` feeds and an early
   first commitment pulls your alarm, and with it that night's bedtime, earlier.
   A *late* first event never makes you sleep in
@@ -305,9 +309,9 @@ python3 tests/test_model.py     # or: pytest
 
 | Source | Basis | Tonight, on the account this was built against |
 |---|---|---|
-| `"oura"` (default) | Oura's own decay-weighted formula | debt 0:30 → 4m earlier |
-| `"computed"` | Only your shortfalls, undecayed | debt 5:50 → 50m earlier |
-| `"oura_balance"` | Oura's `sleep_balance` readiness contributor | balance 93/100 → 4m earlier |
+| `"oura"` (default) | Oura's own decay-weighted formula | debt 3:20 → 28m earlier |
+| `"computed"` | Only your shortfalls, undecayed | debt 7:24 → capped at 60m earlier |
+| `"oura_balance"` | Oura's `sleep_balance` readiness contributor | balance 64/100 → 21m earlier |
 | `"none"` | No adjustment at all | — |
 
 #### The Oura formula
@@ -358,30 +362,39 @@ neither its debt figure nor the need behind it. The result is extremely
 sensitive to that baseline — the 14-day weights sum to about 9.1, so **every
 minute of baseline error moves the debt by roughly nine minutes.**
 
-Read today's debt off the Oura app and invert the formula for it:
+Read a few days' debt off the Oura app and invert the formula for them. In the
+browser, the **Settings** page has a panel for it; from the CLI:
 
 ```bash
-python3 main.py --calibrate-debt 10          # today's figure
-python3 main.py --calibrate-debt 10,20,30    # today, yesterday, the day before
+python3 main.py --calibrate-debt 210             # today's figure, in minutes
+python3 main.py --calibrate-debt 210,250,240     # today, yesterday, the day before
 ```
 
 ```
-  Baseline that reproduces it: 7:12 (7.210 hours, naps excluded)
+  Baseline that reproduces it: 7:15 (7.266 hours, naps excluded)
   Fit against each observation:
-    2026-09-14  model   0m   app  10m   off -10
-    2026-09-13  model  30m   app  20m   off +10
-    2026-09-12  model  20m   app  30m   off -10
+    2026-09-21  model 200m   app 210m   off -10
+    2026-09-20  model 250m   app 250m   match
+    2026-09-19  model 250m   app 240m   off +10
 ```
 
 Put the result in `OURA_BASELINE_NEED_HOURS`. `OURA_DEBT_INCLUDE_NAPS` controls
 whether naps count toward each day's total; nights-only has fitted better in
 testing, so it defaults off.
 
-**Calibrate rather than reading the need off the app.** The need Oura displays
-(7:16 on this account) is about three minutes above the one that reproduces its
-debt figures (7:13) — and at ninefold amplification, three minutes is ~27
-minutes of debt. Using the displayed value gave a total error of 210 minutes
-across the eight observations; the calibrated value gives 70.
+**The baseline drifts, so expect to refit it.** On this account it was 7:13 in
+early September and 7:16 by the 21st, and no single value fits both stretches:
+
+| Observations | 7:13 | 7:16 | Best fit |
+|---|---|---|---|
+| 1–14 Sept (5 readings) | **error 10** | error 90 | 7:13 |
+| 19–21 Sept (3 readings) | error 70 | **error 20** | 7:16 |
+| All eight | error 80 | error 110 | 7:15, error 70 |
+
+Each stretch fits its own baseline nearly exactly and the compromise is worse
+than either, so this is real movement rather than a noisy fit. At ninefold
+amplification those three minutes are ~27 minutes of debt — enough to notice.
+When the figure starts looking wrong, refit it.
 
 An exact match every day should not be expected: the app rounds to 10 minutes,
 its sleep need drifts by a minute or two day to day, and the amplification turns
@@ -393,8 +406,8 @@ the shortfall tally is still computed here and shown beside the score, giving
 you a duration to read even though the adjustment comes from the balance:
 
 ```
-Sleep debt  5:50
-Oura balance 93/100 → -0:04
+Sleep debt  7:24
+Oura balance 64/100 → -0:21
 ```
 
 #### The computed source
@@ -523,6 +536,31 @@ interrupted write can't leave a broken config.
 writer refuses it outright. Values are validated and re-serialised as typed
 literals rather than pasted as text, so nothing typed into a form can execute
 when `config.py` is next imported.
+
+#### Recalibrating the Oura baseline
+
+Below the settings form is the panel that refits `OURA_BASELINE_NEED_HOURS`
+against figures read off the Oura app — the same solver as
+`--calibrate-debt`, without the round trip to a terminal.
+
+![Recalibration](img/calibration.png)
+
+Fill in as many days as you can read off the app. Debts are accepted in any of
+the forms the app prints them — `3:30`, `3h30m` or a bare `210` for minutes —
+and anything unreadable is reported rather than quietly counted as zero. The
+days need not be consecutive, which the CLI's positional list cannot express:
+the app only keeps a fortnight on screen, so the readings you can actually get
+tend to have gaps.
+
+The fit reports the baseline, the total error and each day side by side, so a
+bad reading is visible as one row that misses rather than a number you have to
+trust. Days showing a debt of **0** are dropped and named: any sufficiently low
+baseline reproduces zero, so they pin nothing and would otherwise pad the error.
+
+**Sleep need shown in the app** is optional and separate — it writes
+`OURA_SLEEP_NEED_HOURS`, the bedtime target used when `SLEEP_NEED_SOURCE` is
+`"oura"`, rather than anything the debt fit uses. The two often agree, but they
+are different numbers and worth keeping distinct.
 
 ## Adding another wake-time source
 
