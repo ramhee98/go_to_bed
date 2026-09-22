@@ -7,6 +7,7 @@ import streamlit as st
 
 import config
 from config_store import (
+    SECTION_NOTES,
     SECTIONS,
     SETTINGS,
     ValidationError,
@@ -103,6 +104,9 @@ with st.form("settings"):
             for index, field in enumerate(fields):
                 with columns[index % 2]:
                     raw_values[field.key] = widget(field, current.get(field.key))
+
+            if SECTION_NOTES.get(section):
+                st.info(SECTION_NOTES[section])
 
     st.caption("Saves every tab at once, not just the one you're looking at.")
     submitted = st.form_submit_button("💾 Save to config.py", type="primary")

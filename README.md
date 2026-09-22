@@ -102,6 +102,14 @@ identical — "Bedtime in 1 hour", then "Bedtime in 15 min". Values are
 de-duplicated and ordered furthest-out first; anything unreadable is dropped
 with a warning rather than stopping the run.
 
+> **Google Calendar ignores these.** It discards `VALARM` entries on calendars
+> subscribed by URL: the events appear, the alarms never fire, and a subscribed
+> calendar has no notification settings to turn them back on. Clients that do
+> honour them include Apple Calendar — leave *Remove Alerts* unchecked when
+> adding the subscription — and ICSx⁵ on Android. Importing the file into a
+> Google calendar you own works too, but Google then applies that calendar's
+> default reminder rather than the lead times set here.
+
 ### Calendar-driven wake times
 
 Set `WAKE_SOURCE = "calendar"` to read your actual commitments:

@@ -196,6 +196,22 @@ SETTINGS: List[Field] = [
 
 SECTIONS = list(dict.fromkeys(f.section for f in SETTINGS))
 
+# Caveats that belong with a whole section rather than any one setting. Shown
+# under the fields on the Settings page.
+SECTION_NOTES = {
+    "Reminders": (
+        "**Google Calendar ignores these.** Reminders travel in the `.ics` as "
+        "`VALARM` entries, and Google discards them on calendars subscribed by "
+        "URL — the events show up, the alarms never fire, and there is no "
+        "setting on a subscribed calendar to turn them back on.\n\n"
+        "Clients that do honour them: **Apple Calendar** (leave *Remove "
+        "Alerts* unchecked when you add the subscription) and **ICSx⁵** on "
+        "Android. Importing the file into a Google calendar you own also "
+        "works, but Google then applies that calendar's default reminder "
+        "instead of the lead times set here."
+    ),
+}
+
 
 class ValidationError(ValueError):
     """A submitted value that must not reach config.py."""
