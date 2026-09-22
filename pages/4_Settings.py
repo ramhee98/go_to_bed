@@ -26,11 +26,26 @@ CONFIG_PATH = config.__file__
 current = read_values(config)
 
 
+def form_generation() -> int:
+    """Bumped to force every settings widget to reinitialise from config.py.
+
+    Streamlit identifies a widget by its key, and the browser holds that
+    widget's value across reruns — so once the form has rendered, rewriting
+    config.py underneath it changes nothing on screen, and clearing the
+    server-side session_state does not help either: the frontend simply sends
+    its retained value straight back. Only a different key makes a genuinely
+    new widget. Without this, saving a calibrated baseline below would leave
+    the form above still holding the old one, and its Save would write that
+    back over the calibration.
+    """
+    return int(st.session_state.get("settings_generation", 0))
+
+
 def widget(field, value):
     """Render one setting, returning whatever the user left in it."""
     label = field.label
     help_text = field.help or None
-    key = f"set_{field.key}"
+    key = f"set_{field.key}_{form_generation()}"
 
     if field.kind == "bool":
         return st.checkbox(label, value=bool(value), help=help_text, key=key)
@@ -268,6 +283,14 @@ def _observations(frame):
     return observations, problems
 
 
+def _signature(frame, need_text):
+    """What a fit was computed from, so a stale result can be spotted."""
+    observations, _ = _observations(frame)
+    usable = sorted((day.isoformat(), float(value))
+                    for day, value in observations.items() if value > 0)
+    return (tuple(usable), str(need_text or "").strip())
+
+
 if fit:
     st.session_state["calibration_rows"] = edited
     observations, problems = _observations(edited)
@@ -327,6 +350,7 @@ if fit:
                                   else f"{modelled - observed:+} min",
                     })
                 st.session_state["calibration_fit"] = {
+                    "signature": _signature(edited, shown_need),
                     "hours": round(found / 3600, 4),
                     "label": _rounded_hhmm(found),
                     "rows": rows,
@@ -336,9 +360,22 @@ if fit:
                                    if need_minutes else None),
                 }
 
+saved = st.session_state.pop("calibration_saved", None)
+if saved:
+    st.success(f"Saved {', '.join(saved)} to config.py. "
+               f"Run the calendar again to pick it up.")
+
 result = st.session_state.get("calibration_fit")
+stale = result is not None and result.get("signature") != _signature(edited, shown_need)
+
 if result:
     st.markdown("#### Fitted baseline")
+    if stale:
+        # Saving a baseline that no longer matches the rows on screen is the
+        # one genuinely harmful outcome here, so the button goes away rather
+        # than the numbers.
+        st.warning("These numbers are from the previous fit — the rows have "
+                   "changed since. Press **Fit baseline** again.")
     metrics = st.columns(3)
     metrics[0].metric("Baseline need", result["label"],
                       help="OURA_BASELINE_NEED_HOURS = %s" % result["hours"])
@@ -359,7 +396,8 @@ if result:
         targets["OURA_SLEEP_NEED_HOURS"] = result["need_hours"]
     summary = ", ".join(f"`{k} = {v}`" for k, v in targets.items())
 
-    if st.button(f"💾 Save {summary}", type="primary", key="save_calibration"):
+    if not stale and st.button(f"💾 Save {summary}", type="primary",
+                               key="save_calibration"):
         try:
             changed = write_values(CONFIG_PATH, targets)
         except (ValidationError, OSError) as error:
@@ -370,5 +408,9 @@ if result:
             else:
                 importlib.reload(config)
                 st.cache_data.clear()
-                st.success(f"Saved {', '.join(sorted(changed))}. "
-                           f"Run the calendar again to pick it up.")
+                # Rebuild the form against what was just written, or it
+                # would still be holding the old baseline and its own Save
+                # would put that straight back. See form_generation().
+                st.session_state["settings_generation"] = form_generation() + 1
+                st.session_state["calibration_saved"] = sorted(changed)
+                st.rerun()
