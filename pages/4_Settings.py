@@ -211,7 +211,10 @@ with left:
     )
     st.caption(
         "Leave a row blank to skip it. Days need not be consecutive, and a "
-        "debt of 0 pins nothing — any low enough baseline reproduces it."
+        "debt of 0 pins nothing — any low enough baseline reproduces it. "
+        "**Use recent days.** The need itself drifts, so two to four readings "
+        "from the last week fit better than a longer history, which averages "
+        "across windows that have already passed."
     )
 
 with right:

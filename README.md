@@ -396,6 +396,26 @@ than either, so this is real movement rather than a noisy fit. At ninefold
 amplification those three minutes are ~27 minutes of debt — enough to notice.
 When the figure starts looking wrong, refit it.
 
+**Recency beats quantity.** Feeding the fit everything you have is worse than
+feeding it two recent days — predicting the 19–21 Sept readings from each set:
+
+| Fitted on | Error on 19–21 |
+|---|---|
+| 21 Sept alone | 30 min |
+| 20–21 Sept | **20 min** |
+| 14 + 21 Sept | **20 min** |
+| All eight readings, spanning 3 weeks | 30 min |
+| The five oldest readings | 60 min |
+
+Two errors pull against each other. The app rounds to 10 minutes, so a reading
+is ±5 minutes out — worth about 0.6 minutes of baseline, which averaging
+shrinks. Against that, the need drifts about 1.6 minutes of baseline per week,
+and an old reading drags the answer toward a window that has already passed.
+Drift is the bigger term, so **use two to four readings from the last week**
+rather than accumulating a history. Consecutive days share 13 of their 14
+nights and are nearly the same measurement, which is why the third and fourth
+readings add so little.
+
 An exact match every day should not be expected: the app rounds to 10 minutes,
 its sleep need drifts by a minute or two day to day, and the amplification turns
 either into a visible difference.
@@ -545,8 +565,9 @@ against figures read off the Oura app — the same solver as
 
 ![Recalibration](img/calibration.png)
 
-Fill in as many days as you can read off the app. Debts are accepted in any of
-the forms the app prints them — `3:30`, `3h30m` or a bare `210` for minutes —
+Fill in two to four recent days — more is not better if they are old, for the
+reasons above. Debts are accepted in any of the forms the app prints them —
+`3:30`, `3h30m` or a bare `210` for minutes —
 and anything unreadable is reported rather than quietly counted as zero. The
 days need not be consecutive, which the CLI's positional list cannot express:
 the app only keeps a fortnight on screen, so the readings you can actually get

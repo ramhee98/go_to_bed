@@ -233,9 +233,18 @@ def calibrate_baseline_for_days(
     keeps a fortnight of history on screen, so the figures you can actually read
     off it usually have gaps.
 
-    Each observation is inverted independently and the estimates averaged. The
-    answer is roughly nine times as sensitive as the baseline itself, so one day
-    pins it poorly; three or four spread across the window pin it well.
+    Each observation is inverted independently and the estimates averaged,
+    which trades two errors off against each other. The app rounds to ten
+    minutes, so a reading is +/-5 minutes out, worth about 0.6 minutes of
+    baseline; averaging shrinks that. But the need itself moves — measured at
+    roughly 1.6 minutes of baseline per week — so an old reading pulls the
+    answer toward a window that has already passed.
+
+    Drift is the larger term, so **recency beats quantity**: two to four
+    readings from the last week or so beat a long history. Fitting three weeks
+    of readings together did worse than fitting the most recent two. Note also
+    that consecutive days share 13 of their 14 nights, so they are close to the
+    same measurement — the second reading helps, the fourth barely.
 
     Returns seconds, or None when nothing can be solved — an observed zero is
     satisfied by any sufficiently low baseline and so pins nothing.
