@@ -267,6 +267,13 @@ reaches your phone. Re-running is safe: plans for days in the planning window
 are replaced, and plans for days already past are kept as a record of what was
 recommended at the time.
 
+That record is bounded by `KEEP_PAST_DAYS` (90 by default). Without a limit
+the file only grows — a daily run adds a night and removes nothing, so a year
+of cron leaves some 730 events for your phone to download every refresh. Set
+it to `0` to keep no history at all, or `None` to keep everything. **Only
+events this tool created are ever removed**: anything else sharing the file is
+passed through untouched, however old.
+
 Explore the reasoning:
 
 ```bash

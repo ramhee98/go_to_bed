@@ -229,6 +229,7 @@ def main(use_cache=True):
         bed_alarm_minutes_before=setting("BED_ALARM_MINUTES_BEFORE", 15),
         wake_event=setting("WAKE_EVENT", True),
         wake_alarm_minutes_before=setting("WAKE_ALARM_MINUTES_BEFORE", 0),
+        keep_past_days=setting("KEEP_PAST_DAYS", 90),
     )
 
     print(f"Saving calendar to {ICAL_OUTPUT_PATH}...")

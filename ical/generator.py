@@ -1,7 +1,8 @@
 """Render bedtime plans as an .ics file that any calendar client can subscribe to."""
 
 import os
-from datetime import datetime, timedelta, timezone
+import re
+from datetime import date, datetime, timedelta, timezone
 from typing import List, Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -58,6 +59,21 @@ def resolve_timezone(tz_name: Optional[str]):
 def _is_plan_event(component) -> bool:
     uid = component.get('uid')
     return uid is not None and str(uid).startswith(PLAN_UID_PREFIX)
+
+
+# go-to-bed-bed-2026-09-15@ramhee98 -> 2026-09-15
+_PLAN_DAY = re.compile(re.escape(PLAN_UID_PREFIX) + r"(?:bed|wake)-(\d{4}-\d{2}-\d{2})@")
+
+
+def _plan_event_day(uid: str) -> Optional[date]:
+    """The night a plan event belongs to, or None if the UID doesn't say."""
+    match = _PLAN_DAY.match(str(uid))
+    if not match:
+        return None
+    try:
+        return date.fromisoformat(match.group(1))
+    except ValueError:
+        return None
 
 
 def parse_lead_times(spec, label: str) -> List[int]:
@@ -188,18 +204,34 @@ def generate_bedtime_calendar(
     bed_alarm_minutes_before=15,
     wake_event: bool = True,
     wake_alarm_minutes_before=0,
+    keep_past_days: Optional[int] = None,
 ) -> Calendar:
     """Merge freshly computed plans into an existing calendar.
 
     Plans are forecasts, not facts: any plan event for a day being re-planned is
     replaced outright, while plan events for days outside the window (yesterday,
     last week) are kept as a record of what was recommended at the time.
+
+    `keep_past_days` bounds that record. Without it the file only ever grows —
+    a daily run adds a night and removes nothing, so a year of cron leaves some
+    730 events for a subscriber to download. Days older than the cutoff are
+    dropped. None keeps everything, which is the old behaviour.
+
+    Only events this tool owns are ever dropped; anything else in the file is
+    passed through untouched however old it is.
     """
     calendar = _empty_calendar()
     now_utc = datetime.now(timezone.utc)
 
     planned_days = {plan.day.isoformat() for plan in plans}
     kept = 0
+    pruned = 0
+
+    cutoff = None
+    if keep_past_days is not None and int(keep_past_days) >= 0 and plans:
+        # Measured from the first night planned (today), not from the clock,
+        # so the cutoff matches the window the rest of the run reasons about.
+        cutoff = min(plan.day for plan in plans) - timedelta(days=int(keep_past_days))
 
     for component in existing_calendar.walk('VEVENT'):
         if not _is_plan_event(component):
@@ -209,12 +241,21 @@ def generate_bedtime_calendar(
         # A plan event for a day we're re-planning is stale; drop it so the
         # fresh one takes its place.
         uid = str(component.get('uid'))
-        if not any(uid.endswith(f"-{day}@ramhee98") for day in planned_days):
-            calendar.add_component(component)
-            kept += 1
+        if any(uid.endswith(f"-{day}@ramhee98") for day in planned_days):
+            continue
+
+        day = _plan_event_day(uid)
+        if cutoff is not None and day is not None and day < cutoff:
+            pruned += 1
+            continue
+
+        calendar.add_component(component)
+        kept += 1
 
     if kept:
         print(f"Kept {kept} existing event(s) outside the planning window.")
+    if pruned:
+        print(f"Pruned {pruned} plan event(s) older than {keep_past_days} day(s).")
 
     added = 0
     for plan in plans:

@@ -44,6 +44,11 @@ SETTINGS: List[Field] = [
           help="Where the generated .ics is written.", default="./bedtime.ics"),
     Field("DAYS_AHEAD", "Nights to plan ahead", "int", section="Calendar",
           help="How many nights each run plans.", default=14, minimum=1, maximum=365),
+    Field("KEEP_PAST_DAYS", "Keep past plans for (days)", "int",
+          section="Calendar",
+          help="Past plans are kept as a record of what was recommended. "
+               "Without a limit the .ics only grows. 0 keeps none.",
+          default=90, minimum=0, maximum=3650),
     Field("TIMEZONE", "Timezone", "opt_text", section="Calendar",
           help="IANA name such as Europe/Zurich. Leave blank for the machine's local zone.",
           default=None),

@@ -212,6 +212,12 @@ AUTO_ADD_MISSING_SETTINGS = True
 # How many nights ahead to plan.
 DAYS_AHEAD = 14
 
+# How long to keep past plans in the .ics as a record of what was recommended
+# at the time. Without a limit the file only grows: a daily run adds a night
+# and removes nothing. Set to 0 to keep none, or None to keep them forever.
+# Only events this tool created are ever removed.
+KEEP_PAST_DAYS = 90
+
 # Optional: render all events in this IANA timezone (e.g. "Europe/Zurich").
 # Leave as None to use the machine's local timezone.
 TIMEZONE = None
