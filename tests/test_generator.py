@@ -153,6 +153,81 @@ def test_replanned_days_are_replaced_not_duplicated():
     assert sum(1 for u in uids if u.endswith(f"-{TODAY.isoformat()}@ramhee98")) == 2
 
 
+# -- timestamp churn ---------------------------------------------------------
+
+def _stamp(calendar, uid, name):
+    for component in calendar.walk("VEVENT"):
+        if str(component.get("uid")) == uid:
+            value = component.get(name)
+            return value.dt if value is not None else None
+    raise AssertionError(f"no event {uid}")
+
+
+def _bed_uid(day):
+    return f"{PLAN_UID_PREFIX}bed-{day.isoformat()}@ramhee98"
+
+
+def _rewind(calendar, hours=5):
+    """Age every plan event's timestamps.
+
+    Two merges in the same process usually land in the same second, and
+    iCalendar only records seconds — so a restamped event would come out
+    byte-identical anyway and the test would pass for the wrong reason.
+    Ageing the stored timestamps first makes any restamping visible.
+    """
+    shift = timedelta(hours=hours)
+    for component in calendar.walk("VEVENT"):
+        for name in ("created", "last-modified", "dtstamp"):
+            value = component.get(name)
+            if value is not None:
+                moved = value.dt - shift
+                component.pop(name.upper(), None)
+                component.add(name, moved)
+    return calendar
+
+
+def test_unchanged_plans_keep_their_timestamps():
+    # Every night is rebuilt on every run. If that restamped an unchanged
+    # event, clients would see a modification that never happened.
+    plans = [_plan(TODAY)]
+    first = _rewind(_merge(_existing([]), plans, keep_past_days=90))
+    second = _merge(first, plans, keep_past_days=90)
+
+    uid = _bed_uid(TODAY)
+    for name in ("created", "last-modified", "dtstamp"):
+        assert _stamp(first, uid, name) == _stamp(second, uid, name), name
+
+
+def test_an_unchanged_run_is_byte_identical():
+    plans = [_plan(TODAY), _plan(TODAY + timedelta(days=1))]
+    first = _rewind(_merge(_existing([]), plans, keep_past_days=90))
+    before = first.to_ical()
+    second = _merge(first, plans, keep_past_days=90)
+    assert before == second.to_ical()
+
+
+def test_a_changed_plan_keeps_created_and_moves_last_modified():
+    uid = _bed_uid(TODAY)
+    first = _rewind(_merge(_existing([]), [_plan(TODAY)], keep_past_days=90))
+
+    moved = _plan(TODAY)
+    moved.bedtime = moved.bedtime - timedelta(minutes=30)
+    second = _merge(first, [moved], keep_past_days=90)
+
+    assert _stamp(second, uid, "created") == _stamp(first, uid, "created"), \
+        "CREATED must record when the event first appeared"
+    assert _stamp(second, uid, "last-modified") > _stamp(first, uid, "last-modified"), \
+        "a real change must advance LAST-MODIFIED"
+    assert second.to_ical() != first.to_ical()
+
+
+def test_a_new_night_is_stamped_fresh():
+    first = _merge(_existing([]), [_plan(TODAY)], keep_past_days=90)
+    tomorrow = TODAY + timedelta(days=1)
+    second = _merge(first, [_plan(TODAY), _plan(tomorrow)], keep_past_days=90)
+    assert _stamp(second, _bed_uid(tomorrow), "created") is not None
+
+
 if __name__ == "__main__":
     failures = 0
     for name, fn in sorted(globals().items()):

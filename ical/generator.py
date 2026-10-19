@@ -170,6 +170,57 @@ def _describe(plan: BedtimePlan, profile: SleepProfile, wake_note: str,
     return "\n".join(lines)
 
 
+# The properties a subscriber actually sees. If every one of these matches,
+# the event has not changed in any way worth restamping it for.
+_COMPARED_PROPERTIES = ('dtstart', 'dtend', 'summary', 'description', 'transp')
+_COMPARED_ALARM_PROPERTIES = ('action', 'trigger', 'description')
+
+
+def _ical_value(component, name) -> bytes:
+    value = component.get(name)
+    if value is None:
+        return b''
+    try:
+        return value.to_ical()
+    except AttributeError:
+        return str(value).encode()
+
+
+def _visible_content(component):
+    """What the event says, ignoring the bookkeeping timestamps."""
+    alarms = sorted(
+        tuple(_ical_value(alarm, name) for name in _COMPARED_ALARM_PROPERTIES)
+        for alarm in component.walk('VALARM')
+    )
+    return (tuple(_ical_value(component, name) for name in _COMPARED_PROPERTIES),
+            tuple(alarms))
+
+
+def _carry_timestamps(fresh: Event, previous: Optional[Event], now_utc: datetime):
+    """Reconcile a rebuilt event against the one already in the file.
+
+    Every planned night is rebuilt from scratch on every run, so without this
+    an unchanged event gets a new CREATED, LAST-MODIFIED and DTSTAMP each
+    time. CREATED moving is simply false, and a LAST-MODIFIED that advances
+    when nothing was modified invites clients to re-sync or re-notify for a
+    plan that has not budged.
+
+    Unchanged events are therefore returned exactly as they were found, which
+    also keeps the file byte-stable between runs. A genuinely changed event
+    keeps its original CREATED and takes a fresh LAST-MODIFIED.
+    """
+    if previous is None:
+        return fresh
+    if _visible_content(previous) == _visible_content(fresh):
+        return previous
+
+    created = previous.get('created')
+    if created is not None:
+        fresh.pop('CREATED', None)
+        fresh.add('created', created.dt)
+    return fresh
+
+
 def _build_event(
     uid: str,
     summary: str,
@@ -224,8 +275,14 @@ def generate_bedtime_calendar(
     now_utc = datetime.now(timezone.utc)
 
     planned_days = {plan.day.isoformat() for plan in plans}
+    # Keep the events we are about to rebuild, so an unchanged plan can be
+    # emitted unchanged rather than restamped. See _carry_timestamps.
+    previous_plans = {str(component.get('uid')): component
+                      for component in existing_calendar.walk('VEVENT')
+                      if _is_plan_event(component)}
     kept = 0
     pruned = 0
+    unchanged = 0
 
     cutoff = None
     if keep_past_days is not None and int(keep_past_days) >= 0 and plans:
@@ -265,8 +322,9 @@ def generate_bedtime_calendar(
         description = _describe(plan, profile, wake_note, bed_note)
 
         bed_end = plan.bedtime + timedelta(minutes=bed_event_duration_minutes)
-        calendar.add_component(_build_event(
-            uid=f"{PLAN_UID_PREFIX}bed-{day}@ramhee98",
+        bed_uid = f"{PLAN_UID_PREFIX}bed-{day}@ramhee98"
+        bed_event = _build_event(
+            uid=bed_uid,
             summary=f"🛏️ Go to bed ({hhmm(plan.actual_time_in_bed_seconds)} in bed)",
             start=plan.bedtime,
             end=bed_end,
@@ -274,12 +332,17 @@ def generate_bedtime_calendar(
             alarms=_alarms(bed_alarm_minutes_before, "Bedtime",
                            "BED_ALARM_MINUTES_BEFORE"),
             now_utc=now_utc,
-        ))
+        )
+        reconciled = _carry_timestamps(bed_event, previous_plans.get(bed_uid),
+                                       now_utc)
+        unchanged += reconciled is not bed_event
+        calendar.add_component(reconciled)
         added += 1
 
         if wake_event:
-            calendar.add_component(_build_event(
-                uid=f"{PLAN_UID_PREFIX}wake-{day}@ramhee98",
+            wake_uid = f"{PLAN_UID_PREFIX}wake-{day}@ramhee98"
+            wake_built = _build_event(
+                uid=wake_uid,
                 summary=f"⏰ Wake up ({plan.wake_time.strftime('%H:%M')})",
                 start=plan.wake_time,
                 end=plan.wake_time + timedelta(minutes=15),
@@ -287,10 +350,15 @@ def generate_bedtime_calendar(
                 alarms=_alarms(wake_alarm_minutes_before, "Time to get up",
                                "WAKE_ALARM_MINUTES_BEFORE"),
                 now_utc=now_utc,
-            ))
+            )
+            reconciled = _carry_timestamps(wake_built,
+                                           previous_plans.get(wake_uid), now_utc)
+            unchanged += reconciled is not wake_built
+            calendar.add_component(reconciled)
             added += 1
 
-    print(f"Added {added} planned event(s) for {len(plans)} night(s).")
+    suffix = f", {unchanged} unchanged" if unchanged else ""
+    print(f"Added {added} planned event(s) for {len(plans)} night(s){suffix}.")
     return calendar
 
 

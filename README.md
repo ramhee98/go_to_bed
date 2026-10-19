@@ -267,6 +267,14 @@ reaches your phone. Re-running is safe: plans for days in the planning window
 are replaced, and plans for days already past are kept as a record of what was
 recommended at the time.
 
+Re-running also leaves unchanged nights alone. Every planned night is rebuilt
+from scratch, so the new events are compared against the ones already in the
+file — same times, title, description and alarms — and an unchanged event is
+written back exactly as it was found. `CREATED` therefore keeps saying when
+the event first appeared, `LAST-MODIFIED` only moves when something really
+changed, and two runs over an unchanged plan produce a byte-identical file
+rather than a fortnight of events your calendar thinks were all just edited.
+
 That record is bounded by `KEEP_PAST_DAYS` (90 by default). Without a limit
 the file only grows — a daily run adds a night and removes nothing, so a year
 of cron leaves some 730 events for your phone to download every refresh. Set
