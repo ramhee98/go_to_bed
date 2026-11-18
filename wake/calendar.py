@@ -12,6 +12,7 @@ the sleep model, that night's bedtime.
 
 import fnmatch
 import os
+import re
 from datetime import date, datetime, time, timedelta, tzinfo
 from typing import Dict, List, Optional
 
@@ -50,6 +51,60 @@ def _load_source(source: str) -> Optional[str]:
     except OSError as error:
         print(f"⚠️  Could not read {source}: {error}; skipping.")
         return None
+
+
+# Properties whose value is a date, timestamp or list of them, so the value
+# itself never contains a colon.
+_DATE_PROPERTIES = ("DTSTART", "DTEND", "DUE", "RECURRENCE-ID", "EXDATE", "RDATE")
+
+_UNQUOTED_TZID = re.compile(r';TZID=([^";][^;]*)', re.IGNORECASE)
+
+
+def _repair_tzids(text: str) -> str:
+    """Quote TZID parameters that contain a colon.
+
+    Outlook/Exchange feeds write timezone names such as
+    ``DTSTART;TZID=(UTC+01:00) Amsterdam, Berlin, …:20260819T121500`` without
+    the quotes RFC 5545 requires, so a parser splits the line at the colon
+    inside "+01:00" and the start time becomes garbage. Because the value of a
+    date property never contains a colon, the last colon is the real separator
+    and everything before it can be safely re-quoted.
+    """
+    # Unfold continuation lines first: long timezone names are often folded.
+    unfolded = re.sub(r"\r?\n[ \t]", "", text)
+    lines = unfolded.splitlines()
+    for index, line in enumerate(lines):
+        name = line.split(";", 1)[0].split(":", 1)[0].upper()
+        if name not in _DATE_PROPERTIES or ";" not in line.split(":", 1)[0]:
+            continue
+        head, separator, value = line.rpartition(":")
+        if not separator or ":" not in head:
+            continue  # Already well-formed.
+
+        def quote(match):
+            tzid = match.group(1)
+            return f';TZID="{tzid}"' if ":" in tzid else match.group(0)
+
+        lines[index] = _UNQUOTED_TZID.sub(quote, head) + ":" + value
+    return "\r\n".join(lines) + "\r\n"
+
+
+def _times_readable(component) -> bool:
+    """False when DTSTART, DTEND or DURATION can't be parsed.
+
+    Newer icalendar releases keep a malformed value as a "broken" property that
+    raises only when its .dt is read, so one bad event in a feed would
+    otherwise take the whole plan down. Such an event is skipped instead.
+    """
+    for name in ("dtstart", "dtend", "duration"):
+        prop = component.get(name)
+        if prop is None:
+            continue
+        try:
+            prop.dt
+        except Exception:
+            return False
+    return True
 
 
 def _is_all_day(component) -> bool:
@@ -226,13 +281,14 @@ class CalendarWakeSchedule(WakeSchedule):
         skipped_by_name = 0
         skipped_by_length = 0
         skipped_zero = 0
+        skipped_broken = 0
 
         for source in self.sources:
             text = _load_source(source)
             if not text:
                 continue
             try:
-                calendar = Calendar.from_ical(text)
+                calendar = Calendar.from_ical(_repair_tzids(text))
             except Exception as error:
                 print(f"⚠️  Could not parse {source}: {error}; skipping.")
                 continue
@@ -240,6 +296,9 @@ class CalendarWakeSchedule(WakeSchedule):
             loaded += 1
             for component in calendar.walk("VEVENT"):
                 if component.get("dtstart") is None:
+                    continue
+                if not _times_readable(component):
+                    skipped_broken += 1
                     continue
                 if self.skip_free and not _is_busy(component):
                     continue
@@ -272,6 +331,10 @@ class CalendarWakeSchedule(WakeSchedule):
                     day = local.date()
                     if day not in earliest or local < earliest[day]:
                         earliest[day] = local
+
+        if skipped_broken:
+            print(f"⚠️  Skipped {skipped_broken} event(s) with an unreadable "
+                  "start or end time.")
 
         filtered = []
         if skipped_by_name:

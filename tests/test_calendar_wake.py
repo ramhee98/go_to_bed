@@ -235,3 +235,20 @@ if __name__ == "__main__":
                 print(f"❌ {name}: {e or 'assertion failed'}")
     print(f"\n{'All tests passed.' if not failures else f'{failures} test(s) failed.'}")
     sys.exit(1 if failures else 0)
+
+
+OUTLOOK_FIXTURE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                               "fixtures", "outlook.ics")
+
+
+def test_outlook_unquoted_tzid_is_repaired():
+    # Exchange writes TZID=(UTC+01:00) … without quotes; the colon inside the
+    # offset used to split the line and crash the app. 07:15 CEST − 90 min.
+    schedule = _schedule(sources=[OUTLOOK_FIXTURE])
+    assert schedule.wake_time_for(date(2026, 8, 19)).time() == time(5, 45)
+
+
+def test_unparseable_event_is_skipped_not_fatal():
+    schedule = _schedule(sources=[OUTLOOK_FIXTURE])
+    # The broken event is dropped; other days keep the fixed wake time.
+    assert schedule.wake_time_for(date(2026, 8, 20)).time() == time(7, 0)
