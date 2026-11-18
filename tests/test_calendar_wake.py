@@ -252,3 +252,10 @@ def test_unparseable_event_is_skipped_not_fatal():
     schedule = _schedule(sources=[OUTLOOK_FIXTURE])
     # The broken event is dropped; other days keep the fixed wake time.
     assert schedule.wake_time_for(date(2026, 8, 20)).time() == time(7, 0)
+
+
+def test_unreadable_exdate_keeps_the_recurring_event():
+    # Weekly 07:00 standup whose EXDATE can't be parsed: the exclusion is
+    # dropped, the event still counts. 07:00 − 90 min = 05:30.
+    schedule = _schedule(sources=[OUTLOOK_FIXTURE])
+    assert schedule.wake_time_for(date(2026, 8, 31)).time() == time(5, 30)

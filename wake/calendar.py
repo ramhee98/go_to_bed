@@ -209,8 +209,16 @@ def _expand(component, horizon: datetime) -> List[datetime]:
     exdates = component.get("exdate")
     if exdates is not None:
         for entry in (exdates if isinstance(exdates, list) else [exdates]):
-            for stamp in getattr(entry, "dts", []):
-                value = stamp.dt
+            try:
+                stamps = [stamp.dt for stamp in getattr(entry, "dts", [])]
+            except Exception:
+                # An unreadable exclusion is dropped rather than the event: at
+                # worst a cancelled occurrence still counts, which only means
+                # an earlier night, never an overslept morning.
+                print("⚠️  Ignoring an unreadable EXDATE in "
+                      f"'{component.get('summary', '')}'.")
+                continue
+            for value in stamps:
                 excluded.add(value.date() if isinstance(value, datetime) else value)
 
     starts = []
@@ -322,7 +330,17 @@ class CalendarWakeSchedule(WakeSchedule):
                 horizon = (horizon_naive.replace(tzinfo=start_value.tzinfo)
                            if isinstance(start_value, datetime) else horizon_naive)
 
-                for occurrence in _expand(component, horizon):
+                try:
+                    occurrences = list(_expand(component, horizon))
+                except Exception as error:
+                    # Last resort: whatever else a feed gets wrong costs this
+                    # one event, never the whole plan.
+                    print(f"⚠️  Skipping '{component.get('summary', '')}': "
+                          f"{error}")
+                    skipped_broken += 1
+                    continue
+
+                for occurrence in occurrences:
                     if not isinstance(occurrence, datetime):
                         # An all-day occurrence that survived the filter has no
                         # meaningful start time to wake before.
@@ -333,8 +351,7 @@ class CalendarWakeSchedule(WakeSchedule):
                         earliest[day] = local
 
         if skipped_broken:
-            print(f"⚠️  Skipped {skipped_broken} event(s) with an unreadable "
-                  "start or end time.")
+            print(f"⚠️  Skipped {skipped_broken} unreadable event(s).")
 
         filtered = []
         if skipped_by_name:

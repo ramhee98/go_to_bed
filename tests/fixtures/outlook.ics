@@ -29,4 +29,14 @@ UID:hopelessly-broken
 SUMMARY:Garbage
 DTSTART:not-a-date
 END:VEVENT
+BEGIN:VEVENT
+UID:weekly-with-broken-exdate
+SUMMARY:Weekly standup
+DTSTART;TZID=(UTC+01:00) Amsterdam, Berlin, Bern, Rome, Stockholm, Vienna:2
+ 0260824T070000
+DTEND;TZID=(UTC+01:00) Amsterdam, Berlin, Bern, Rome, Stockholm, Vienna:202
+ 60824T073000
+RRULE:FREQ=WEEKLY
+EXDATE:not-a-date
+END:VEVENT
 END:VCALENDAR
